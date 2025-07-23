@@ -13,8 +13,8 @@ class DebugMiddleware
 
         // Only inject debug UI if it's a web request with HTML content and debug is enabled
         if (!config('app.debug') || 
-            !$request->expectsHtml() || 
-            !method_exists($response, 'getContent')) {
+            !method_exists($response, 'getContent') ||
+            !str_contains($response->headers->get('Content-Type', ''), 'text/html')) {
             return $response;
         }
 
