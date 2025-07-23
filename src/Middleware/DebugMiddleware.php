@@ -21,6 +21,13 @@ class DebugMiddleware
         $service = app('ab-testing');
         $experiments = $service->getDebugExperiments();
         
+        // Debug logging
+        \Log::info('AB Debug Middleware', [
+            'experiments' => $experiments,
+            'content_type' => $response->headers->get('Content-Type'),
+            'has_body_tag' => str_contains($response->getContent(), '</body>')
+        ]);
+        
         if (empty($experiments)) {
             return $response;
         }
