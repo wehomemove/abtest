@@ -174,48 +174,12 @@ class AbTestService
         $cacheKey = $this->cachePrefix . "experiment:{$name}";
         
         return Cache::remember($cacheKey, $this->cacheTtl, function () use ($name) {
-            $experiment = DB::table('ab_experiments')
+            return DB::table('ab_experiments')
                 ->where('name', $name)
                 ->first();
-                
-            if (!$experiment) {
-                return null;
-            }
-            
-            // Check if experiment can run in current application
-            $currentApp = $this->getCurrentApplication();
-            $targetApps = json_decode($experiment->target_applications, true);
-            
-            if (!in_array($currentApp, $targetApps)) {
-                return null;
-            }
-            
-            return $experiment;
         });
     }
 
-    /**
-     * Detect current application context
-     */
-    protected function getCurrentApplication(): string
-    {
-        $url = request()->getHost();
-        
-        if (str_contains($url, 'motus') || str_contains($url, 'app.homemove')) {
-            return 'motus';
-        }
-        
-        if (str_contains($url, 'apollo') || str_contains($url, 'homemove.test')) {
-            return 'apollo';
-        }
-        
-        if (str_contains($url, 'olympus')) {
-            return 'olympus';
-        }
-        
-        // Default fallback based on config or ENV
-        return config('app.name', 'motus');
-    }
 
     /**
      * Get or generate session-based user ID
