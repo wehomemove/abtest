@@ -13,12 +13,16 @@
             @php
                 $experiment = DB::table('ab_experiments')->where('name', $experimentName)->first();
                 $variants = $experiment ? json_decode($experiment->variants, true) : [];
-                $recentEvents = DB::table('ab_events')
-                    ->where('experiment_name', $experimentName)
-                    ->where('user_id', session('ab_user_id'))
-                    ->orderBy('created_at', 'desc')
-                    ->limit(10)
-                    ->get();
+                $recentEvents = collect();
+                
+                if ($experiment) {
+                    $recentEvents = DB::table('ab_events')
+                        ->where('experiment_id', $experiment->id)
+                        ->where('user_id', session('ab_user_id'))
+                        ->orderBy('created_at', 'desc')
+                        ->limit(10)
+                        ->get();
+                }
             @endphp
             
             <div class="mb-4 p-3 bg-white/5 rounded-lg border-l-4 border-emerald-500">
