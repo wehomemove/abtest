@@ -25,7 +25,8 @@ class DebugMiddleware
         \Log::info('AB Debug Middleware', [
             'experiments' => $experiments,
             'content_type' => $response->headers->get('Content-Type'),
-            'has_body_tag' => str_contains($response->getContent(), '</body>')
+            'has_body_tag' => str_contains($response->getContent(), '</body>'),
+            'experiments_count' => count($experiments)
         ]);
         
         if (empty($experiments)) {
@@ -39,9 +40,14 @@ class DebugMiddleware
             return $response;
         }
 
-        $debugHtml = view('ab-testing::debug', compact('experiments'))->render();
-        $content = str_replace('</body>', $debugHtml . '</body>', $content);
-        $response->setContent($content);
+        try {
+            $debugHtml = view('ab-testing::debug', compact('experiments'))->render();
+            $content = str_replace('</body>', $debugHtml . '</body>', $content);
+            $response->setContent($content);
+            \Log::info('AB Debug: Successfully injected debug HTML');
+        } catch (\Exception $e) {
+            \Log::error('AB Debug: Failed to render debug view', ['error' => $e->getMessage()]);
+        }
 
         return $response;
     }
