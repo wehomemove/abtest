@@ -314,6 +314,62 @@ public function it_assigns_consistent_variants()
    - Ensure routes are loaded: `php artisan route:list | grep ab-testing`
    - Check database migrations: `php artisan migrate:status`
 
+## 🤖 Claude MCP Integration
+
+This package includes an MCP (Model Context Protocol) server that lets Claude directly manage your A/B tests!
+
+### Setup MCP Server
+
+```bash
+# Install MCP server dependencies
+npm install
+
+# Start the MCP server
+npm start
+```
+
+### Configure in Claude Desktop
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "abtest": {
+      "command": "node",
+      "args": ["/path/to/your/abtest/mcp-server.js"],
+      "env": {
+        "ABTEST_API_URL": "http://localhost:8000/api/ab-testing"
+      }
+    }
+  }
+}
+```
+
+### Claude Commands Available
+
+Once configured, Claude can directly:
+
+```
+# Create experiments
+"Create an A/B test called 'header_cta' with variants control (60%) and new_design (40%)"
+
+# Track events  
+"Track a 'button_click' event for the 'header_cta' experiment"
+
+# Get results
+"Show me the current stats for the 'header_cta' experiment"
+
+# Manage experiments
+"Pause the 'header_cta' experiment and reduce traffic to 25%"
+```
+
+**Benefits:**
+- Claude can create and manage experiments conversationally
+- Instant access to real-time A/B test data
+- Natural language experiment analysis
+- Automated experiment monitoring and alerts
+
 ## 🤝 Contributing
 
 ```bash
@@ -323,6 +379,7 @@ cd abtest
 
 # Install dependencies  
 composer install
+npm install
 
 # Run tests
 composer test

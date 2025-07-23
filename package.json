@@ -1,0 +1,29 @@
+{
+  "name": "@homemove/abtest-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Homemove A/B Testing package",
+  "type": "module",
+  "main": "mcp-server.js",
+  "bin": {
+    "abtest-mcp-server": "./mcp-server.js"
+  },
+  "scripts": {
+    "start": "node mcp-server.js",
+    "dev": "nodemon mcp-server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "ab-testing",
+    "claude",
+    "laravel"
+  ],
+  "author": "Homemove",
+  "license": "MIT"
+}
