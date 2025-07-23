@@ -1,14 +1,14 @@
 @if(config('app.debug') && !empty($experiments))
-<div id="ab-test-debug" class="fixed bottom-5 right-5 bg-gradient-to-br from-slate-800 to-slate-700 text-white rounded-xl font-mono text-xs z-[999999] shadow-2xl min-w-80 max-w-96 border border-white/10 cursor-grab select-none">
+<div id="ab-test-debug" style="position: fixed; bottom: 20px; right: 20px; background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; border-radius: 12px; font-family: ui-monospace, 'SF Mono', Monaco, monospace; font-size: 12px; z-index: 999999; box-shadow: 0 8px 25px rgba(0,0,0,0.4); min-width: 320px; max-width: 400px; border: 1px solid rgba(255,255,255,0.1); cursor: grab; user-select: none;">
     <!-- Header -->
-    <div class="flex items-center px-4 py-3 border-b border-white/10 bg-white/5 rounded-t-xl">
-        <span class="mr-2 text-sm">🧪</span>
-        <span class="font-semibold flex-1">A/B Testing Debugger</span>
-        <button onclick="toggleDebugPanel()" class="bg-white/10 hover:bg-white/20 border-0 text-white px-2 py-1 rounded cursor-pointer text-xs mr-2 transition-colors">△</button>
-        <button onclick="document.getElementById('ab-test-debug').style.display='none'" class="bg-red-500/20 hover:bg-red-500/30 border-0 text-red-300 px-2 py-1 rounded cursor-pointer text-xs transition-colors">×</button>
+    <div style="display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); border-radius: 12px 12px 0 0;">
+        <span style="margin-right: 8px; font-size: 14px;">🧪</span>
+        <span style="font-weight: 600; flex: 1;">A/B Testing Debugger</span>
+        <button onclick="toggleDebugPanel()" style="background: rgba(255,255,255,0.1); border: none; color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; margin-right: 8px; transition: background 0.2s;">△</button>
+        <button onclick="document.getElementById('ab-test-debug').style.display='none'" style="background: rgba(239,68,68,0.2); border: none; color: #fca5a5; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; transition: background 0.2s;">×</button>
     </div>
     
-    <div id="debug-content" class="p-4">
+    <div id="debug-content" style="padding: 16px;">
         @foreach($experiments as $experimentName => $data)
             @php
                 $experiment = DB::table('ab_experiments')->where('name', $experimentName)->first();
@@ -25,28 +25,29 @@
                 }
             @endphp
             
-            <div class="mb-4 p-3 bg-white/5 rounded-lg border-l-4 border-emerald-500">
+            <div style="margin-bottom: 16px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 4px solid #10b981;">
                 <!-- Experiment Header -->
-                <div class="flex items-center justify-between mb-2">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                     <div>
-                        <div class="font-semibold text-emerald-400 text-sm">{{ $experimentName }}</div>
-                        <div class="text-xs text-white/60">{{ $data['calls'] }} calls this request</div>
+                        <div style="font-weight: 600; color: #10b981; font-size: 13px;">{{ $experimentName }}</div>
+                        <div style="font-size: 10px; color: rgba(255,255,255,0.6);">{{ $data['calls'] }} calls this request</div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <span class="bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded text-xs font-semibold">{{ $data['variant'] }}</span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="background: rgba(16,185,129,0.2); color: #6ee7b7; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">{{ $data['variant'] }}</span>
                     </div>
                 </div>
                 
                 <!-- Variant Switcher -->
-                <div class="mb-2">
-                    <div class="text-xs text-white/70 mb-1">Switch Variant:</div>
-                    <div class="flex gap-1 flex-wrap">
+                <div style="margin-bottom: 8px;">
+                    <div style="font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 4px;">Switch Variant:</div>
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap;">
                         @foreach($variants as $variant => $weight)
                             <button 
                                 onclick="switchVariant('{{ $experimentName }}', '{{ $variant }}')"
-                                class="px-2 py-1 rounded cursor-pointer text-xs font-medium transition-all hover:scale-105 {{ $variant === $data['variant'] 
-                                    ? 'bg-emerald-500/30 border border-emerald-500 text-emerald-300' 
-                                    : 'bg-white/10 border border-white/20 text-white/80 hover:bg-white/20' }}">
+                                style="background: {{ $variant === $data['variant'] ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)' }}; 
+                                       border: 1px solid {{ $variant === $data['variant'] ? '#10b981' : 'rgba(255,255,255,0.2)' }}; 
+                                       color: {{ $variant === $data['variant'] ? '#6ee7b7' : 'rgba(255,255,255,0.8)' }}; 
+                                       padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: 500; transition: all 0.2s;">
                                 {{ $variant }} ({{ $weight }}%)
                             </button>
                         @endforeach
@@ -56,11 +57,11 @@
                 <!-- Recent Events -->
                 @if($recentEvents->count() > 0)
                     <div>
-                        <div class="text-xs text-white/70 mb-1">Recent Events:</div>
+                        <div style="font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 4px;">Recent Events:</div>
                         @foreach($recentEvents as $event)
-                            <div class="flex justify-between items-center px-2 py-1 bg-white/5 rounded mb-1">
-                                <span class="text-xs text-amber-300">{{ $event->event_name }}</span>
-                                <span class="text-xs text-white/50">{{ \Carbon\Carbon::parse($event->created_at)->diffForHumans() }}</span>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 3px 6px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-bottom: 2px;">
+                                <span style="font-size: 10px; color: #fbbf24;">{{ $event->event_name }}</span>
+                                <span style="font-size: 9px; color: rgba(255,255,255,0.5);">{{ \Carbon\Carbon::parse($event->created_at)->diffForHumans() }}</span>
                             </div>
                         @endforeach
                     </div>
@@ -69,12 +70,12 @@
         @endforeach
         
         <!-- Actions -->
-        <div class="mt-4 pt-3 border-t border-white/10">
-            <div class="flex gap-2 mb-2">
-                <button onclick="clearAllOverrides()" class="bg-red-500/20 border border-red-500/30 text-red-300 px-3 py-1.5 rounded cursor-pointer text-xs flex-1 hover:bg-red-500/30 transition-colors">Clear Overrides</button>
-                <button onclick="refreshPage()" class="bg-blue-500/20 border border-blue-500/30 text-blue-300 px-3 py-1.5 rounded cursor-pointer text-xs flex-1 hover:bg-blue-500/30 transition-colors">Refresh</button>
+        <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <button onclick="clearAllOverrides()" style="background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Clear Overrides</button>
+                <button onclick="refreshPage()" style="background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Refresh</button>
             </div>
-            <div class="text-xs text-white/50 text-center">
+            <div style="font-size: 9px; color: rgba(255,255,255,0.5); text-align: center;">
                 Session: {{ substr(session()->getId(), 0, 8) }}... | User: {{ substr(session('ab_user_id', 'guest'), 0, 8) }}...
             </div>
         </div>
