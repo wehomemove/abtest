@@ -19,4 +19,11 @@ Route::prefix('ab-testing')
                 Route::delete('/{experiment}', [DashboardController::class, 'destroy'])->name('destroy');
                 Route::patch('/{experiment}/toggle', [DashboardController::class, 'toggleStatus'])->name('toggle');
             });
+        
+        // Debug routes
+        Route::post('/clear-session', function () {
+            session()->forget('ab_user_id');
+            session()->save();
+            return response()->json(['success' => true]);
+        })->name('clear-session');
     });

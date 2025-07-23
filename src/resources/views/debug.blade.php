@@ -76,7 +76,8 @@
                 <button onclick="refreshPage()" style="background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Refresh</button>
             </div>
             <div style="font-size: 9px; color: rgba(255,255,255,0.5); text-align: center;">
-                Session: {{ substr(session()->getId(), 0, 8) }}... | User: {{ substr(session('ab_user_id', 'guest'), 0, 8) }}...
+                Session: {{ substr(session()->getId(), 0, 8) }}... | User: {{ substr(session('ab_user_id', 'guest'), 0, 8) }}...<br>
+                <button onclick="clearAbSession()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; margin-top: 4px;">Reset A/B Session</button>
             </div>
         </div>
     </div>
@@ -161,6 +162,23 @@
     
     window.refreshPage = function() {
         location.reload();
+    };
+    
+    window.clearAbSession = function() {
+        // Clear A/B testing session via AJAX
+        fetch('/ab-testing/clear-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            }
+        }).then(() => {
+            location.reload();
+        }).catch(() => {
+            // Fallback: try to clear via browser
+            sessionStorage.clear();
+            location.reload();
+        });
     };
 })();
 </script>
