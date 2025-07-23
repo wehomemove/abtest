@@ -157,7 +157,7 @@ class AbTestService
         
         $cumulative = 0;
         foreach ($variants as $variant => $weight) {
-            $cumulative += $weight;
+            $cumulative += (int) $weight; // Cast to integer to handle string values
             if ($percentage <= $cumulative) {
                 return $variant;
             }
