@@ -28,15 +28,6 @@ A comprehensive Laravel package for A/B testing with user-organized event tracki
 composer require wehomemove/abtest
 ```
 
-Or add to your `composer.json`:
-```json
-{
-    "require": {
-        "wehomemove/abtest": "^1.0"
-    }
-}
-```
-
 ### 2. Setup
 
 ```bash
@@ -45,14 +36,44 @@ php artisan vendor:publish --provider="Homemove\AbTesting\Providers\AbTestingSer
 
 # Run migrations
 php artisan migrate
-
-# Configure Redis (recommended)
-# In .env:
-REDIS_HOST=127.0.0.1
-CACHE_DRIVER=redis
 ```
 
-### 3. Access Dashboard
+### 3. Include JavaScript Helper
+
+Add to your layout file:
+```html
+<!-- Include A/B testing helper -->
+<script src="{{ asset('vendor/abtest/abtest.js') }}"></script>
+
+<!-- Or copy the helper function -->
+<script>
+window.abtrack = function(experiment, event, properties = {}) {
+    return fetch('/api/ab-testing/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+        body: JSON.stringify({ experiment, event, properties })
+    }).catch(console.error);
+};
+</script>
+```
+
+### 4. Track Events (Super Simple!)
+
+```javascript
+// Basic tracking
+abtrack('button_color_test', 'button_click');
+
+// With properties
+abtrack('button_color_test', 'button_click', {
+    button_type: 'add_property',
+    page: 'mortgages_service'
+});
+
+// Track conversions
+abtrack('checkout_flow', 'conversion', { amount: 99.99 });
+```
+
+### 5. Access Dashboard
 
 Visit: **`http://your-app.test/ab-testing/dashboard`**
 
@@ -101,7 +122,7 @@ Confidence Level: 95%
 {{-- Track conversions --}}
 <script>
 function trackCheckout() {
-    @abtrack('checkout_flow', null, 'checkout_click')
+    abtrack('checkout_flow', 'checkout_click');
     // Continue with checkout logic
 }
 </script>
