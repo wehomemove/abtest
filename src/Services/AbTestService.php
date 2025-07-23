@@ -10,6 +10,7 @@ class AbTestService
 {
     protected $cachePrefix = 'ab_test:';
     protected $cacheTtl = 3600; // 1 hour
+    protected $debugExperiments = [];
 
     /**
      * Get variant for a user in an experiment
@@ -32,6 +33,7 @@ class AbTestService
             if ($experiment) {
                 $variants = json_decode($experiment->variants, true);
                 if (isset($variants[$overrideVariant])) {
+                    $this->trackDebugExperiment($experimentName, $overrideVariant);
                     return $overrideVariant;
                 }
             }
@@ -39,9 +41,12 @@ class AbTestService
         
         $cacheKey = $this->cachePrefix . "variant:{$experimentName}:{$userId}";
         
-        return Cache::remember($cacheKey, $this->cacheTtl, function () use ($experimentName, $userId) {
+        $variant = Cache::remember($cacheKey, $this->cacheTtl, function () use ($experimentName, $userId) {
             return $this->assignVariant($experimentName, $userId);
         });
+        
+        $this->trackDebugExperiment($experimentName, $variant);
+        return $variant;
     }
 
     /**
@@ -240,5 +245,32 @@ class AbTestService
         } else {
             Cache::flush();
         }
+    }
+
+    /**
+     * Track experiment usage for debug panel
+     */
+    protected function trackDebugExperiment(string $experimentName, string $variant): void
+    {
+        if (!config('app.debug')) {
+            return;
+        }
+
+        if (!isset($this->debugExperiments[$experimentName])) {
+            $this->debugExperiments[$experimentName] = [
+                'variant' => $variant,
+                'calls' => 0
+            ];
+        }
+        
+        $this->debugExperiments[$experimentName]['calls']++;
+    }
+
+    /**
+     * Get debug experiments for current request
+     */
+    public function getDebugExperiments(): array
+    {
+        return $this->debugExperiments;
     }
 }

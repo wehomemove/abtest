@@ -3,7 +3,6 @@
 namespace Homemove\AbTesting\Providers;
 
 use Homemove\AbTesting\Services\AbTestService;
-use Homemove\AbTesting\Blade\AbTestDirectives;
 use Homemove\AbTesting\Middleware\AbTestMiddleware;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Blade;
@@ -44,6 +43,7 @@ class AbTestingServiceProvider extends ServiceProvider
 
         $this->registerBladeDirectives();
         $this->registerMiddleware();
+        $this->registerDebugInjection();
     }
 
     protected function registerBladeDirectives()
@@ -64,5 +64,37 @@ class AbTestingServiceProvider extends ServiceProvider
     protected function registerMiddleware()
     {
         $this->app['router']->aliasMiddleware('ab-test', AbTestMiddleware::class);
+    }
+
+    protected function registerDebugInjection()
+    {
+        if (!config('app.debug')) {
+            return;
+        }
+
+        // Register a terminating callback to inject debug UI
+        $this->app->terminating(function () {
+            $service = app('ab-testing');
+            $experiments = $service->getDebugExperiments();
+            
+            if (empty($experiments)) {
+                return;
+            }
+
+            // Only inject for web responses with HTML content
+            $response = app('Illuminate\Http\Response');
+            if (!$response || !str_contains($response->headers->get('Content-Type', ''), 'text/html')) {
+                return;
+            }
+
+            $debugHtml = view('ab-testing::debug', compact('experiments'))->render();
+            
+            // Inject before closing body tag
+            $content = $response->getContent();
+            if (str_contains($content, '</body>')) {
+                $content = str_replace('</body>', $debugHtml . '</body>', $content);
+                $response->setContent($content);
+            }
+        });
     }
 }
