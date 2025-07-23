@@ -152,12 +152,106 @@ class AbTestService
     protected function calculateVariant($userId, $experiment): string
     {
         $variants = json_decode($experiment->variants, true);
+        
+        // Check if we should use adaptive allocation to balance distribution
+        if ($this->shouldUseAdaptiveAllocation($experiment)) {
+            return $this->calculateAdaptiveVariant($userId, $experiment, $variants);
+        }
+        
+        // Original hash-based assignment
         $hash = hexdec(substr(md5($experiment->name . $userId), 0, 8));
         $percentage = ($hash % 100) + 1;
         
         $cumulative = 0;
         foreach ($variants as $variant => $weight) {
             $cumulative += (int) $weight; // Cast to integer to handle string values
+            if ($percentage <= $cumulative) {
+                return $variant;
+            }
+        }
+
+        return 'control';
+    }
+
+    /**
+     * Check if we should use adaptive allocation (only after we have some data)
+     */
+    protected function shouldUseAdaptiveAllocation($experiment): bool
+    {
+        // Only use adaptive allocation after we have at least 20 assignments
+        // This prevents early skewing from affecting the algorithm
+        $totalAssignments = DB::table('ab_user_assignments')
+            ->where('experiment_id', $experiment->id)
+            ->count();
+            
+        return $totalAssignments >= 20;
+    }
+
+    /**
+     * Calculate variant using adaptive allocation to balance distribution
+     */
+    protected function calculateAdaptiveVariant($userId, $experiment, $variants): string
+    {
+        // Get current distribution
+        $currentCounts = [];
+        $totalAssignments = 0;
+        
+        foreach (array_keys($variants) as $variant) {
+            $count = DB::table('ab_user_assignments')
+                ->where('experiment_id', $experiment->id)
+                ->where('variant', $variant)
+                ->count();
+            $currentCounts[$variant] = $count;
+            $totalAssignments += $count;
+        }
+        
+        if ($totalAssignments == 0) {
+            // Fallback to hash-based if no assignments yet
+            return $this->calculateHashBasedVariant($userId, $experiment->name, $variants);
+        }
+        
+        // Calculate how far each variant is from its target percentage
+        $targetPercentages = [];
+        $deviations = [];
+        
+        foreach ($variants as $variant => $targetWeight) {
+            $targetPercentages[$variant] = (int) $targetWeight;
+            $currentPercentage = ($currentCounts[$variant] / $totalAssignments) * 100;
+            $deviations[$variant] = $targetPercentages[$variant] - $currentPercentage;
+        }
+        
+        // Find the variant that's most under-represented
+        $maxDeviation = max($deviations);
+        
+        // If the maximum deviation is small (< 5%), use normal hash-based assignment
+        if ($maxDeviation < 5) {
+            return $this->calculateHashBasedVariant($userId, $experiment->name, $variants);
+        }
+        
+        // Otherwise, assign to the most under-represented variant
+        $underRepresentedVariants = array_keys($deviations, $maxDeviation);
+        
+        // If multiple variants are equally under-represented, use hash to pick one
+        if (count($underRepresentedVariants) > 1) {
+            $hash = hexdec(substr(md5($experiment->name . $userId), 0, 8));
+            $index = $hash % count($underRepresentedVariants);
+            return $underRepresentedVariants[$index];
+        }
+        
+        return $underRepresentedVariants[0];
+    }
+
+    /**
+     * Original hash-based variant calculation
+     */
+    protected function calculateHashBasedVariant($userId, $experimentName, $variants): string
+    {
+        $hash = hexdec(substr(md5($experimentName . $userId), 0, 8));
+        $percentage = ($hash % 100) + 1;
+        
+        $cumulative = 0;
+        foreach ($variants as $variant => $weight) {
+            $cumulative += (int) $weight;
             if ($percentage <= $cumulative) {
                 return $variant;
             }
