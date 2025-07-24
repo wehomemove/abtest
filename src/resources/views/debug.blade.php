@@ -1,7 +1,3 @@
-@php
-    use Illuminate\Support\Facades\DB;
-@endphp
-
 @if(config('app.debug'))
 <div id="ab-test-debug" style="position: fixed; bottom: 20px; right: 20px; background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; border-radius: 12px; font-family: ui-monospace, 'SF Mono', Monaco, monospace; font-size: 12px; z-index: 999999; box-shadow: 0 8px 25px rgba(0,0,0,0.4); min-width: 320px; max-width: 400px; border: 1px solid rgba(255,255,255,0.1); cursor: grab; user-select: none;">
     <!-- Header -->
@@ -18,67 +14,36 @@
                 <p style="margin: 0; font-size: 11px;">No A/B tests active on this page</p>
                 <p style="margin: 4px 0 0 0; font-size: 9px;">Use @variant() directive to activate experiments</p>
             </div>
+        @else
+            @foreach($experiments as $experimentName => $data)
+
+                <div style="margin-bottom: 16px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 4px solid #10b981;">
+                    <!-- Experiment Header -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <div>
+                            <div style="font-weight: 600; color: #10b981; font-size: 13px;">{{ $experimentName }}</div>
+                            <div style="font-size: 10px; color: rgba(255,255,255,0.6);">{{ $data['calls'] }} calls this request</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="background: rgba(16,185,129,0.2); color: #6ee7b7; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">{{ $data['variant'] }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Variant Info -->
+                    <div style="margin-bottom: 8px;">
+                        <div style="font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 4px;">Current Variant:</div>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                            <span style="background: rgba(16,185,129,0.3); border: 1px solid #10b981; color: #6ee7b7; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 500;">
+                                {{ $data['variant'] }}
+                            </span>
+                        </div>
+                        <div style="font-size: 9px; color: rgba(255,255,255,0.5); margin-top: 4px;">
+                            Use debug overrides via browser cookies to test different variants
+                        </div>
+                    </div>
+                </div>
+            @endforeach
         @endif
-        
-        @foreach($experiments as $experimentName => $data)
-            @php
-                $experiment = DB::table('ab_experiments')->where('name', $experimentName)->first();
-                $variants = $experiment ? json_decode($experiment->variants, true) : [];
-                $recentEvents = collect();
-
-                if ($experiment && isset($userInfo['user_id']) && $userInfo['user_id'] !== 'not_set') {
-                    $recentEvents = DB::table('ab_events')
-                        ->where('experiment_id', $experiment->id)
-                        ->where('user_id', $userInfo['user_id'])
-                        ->orderBy('created_at', 'desc')
-                        ->limit(10)
-                        ->get();
-                }
-            @endphp
-
-            <div style="margin-bottom: 16px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 4px solid #10b981;">
-                <!-- Experiment Header -->
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <div>
-                        <div style="font-weight: 600; color: #10b981; font-size: 13px;">{{ $experimentName }}</div>
-                        <div style="font-size: 10px; color: rgba(255,255,255,0.6);">{{ $data['calls'] }} calls this request</div>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="background: rgba(16,185,129,0.2); color: #6ee7b7; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">{{ $data['variant'] }}</span>
-                    </div>
-                </div>
-
-                <!-- Variant Switcher -->
-                <div style="margin-bottom: 8px;">
-                    <div style="font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 4px;">Switch Variant:</div>
-                    <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                        @foreach($variants as $variant => $weight)
-                            <button
-                                onclick="switchVariant('{{ $experimentName }}', '{{ $variant }}')"
-                                style="background: {{ $variant === $data['variant'] ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)' }};
-                                       border: 1px solid {{ $variant === $data['variant'] ? '#10b981' : 'rgba(255,255,255,0.2)' }};
-                                       color: {{ $variant === $data['variant'] ? '#6ee7b7' : 'rgba(255,255,255,0.8)' }};
-                                       padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: 500; transition: all 0.2s;">
-                                {{ $variant }} ({{ $weight }}%)
-                            </button>
-                        @endforeach
-                    </div>
-                </div>
-
-                <!-- Recent Events -->
-                @if($recentEvents->count() > 0)
-                    <div>
-                        <div style="font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 4px;">Recent Events:</div>
-                        @foreach($recentEvents as $event)
-                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 3px 6px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-bottom: 2px;">
-                                <span style="font-size: 10px; color: #fbbf24;">{{ $event->event_name }}</span>
-                                <span style="font-size: 9px; color: rgba(255,255,255,0.5);">{{ \Carbon\Carbon::parse($event->created_at)->diffForHumans() }}</span>
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
-            </div>
-        @endforeach
 
         <!-- Actions -->
         <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
