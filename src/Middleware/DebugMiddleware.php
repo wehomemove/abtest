@@ -172,10 +172,10 @@ class DebugMiddleware
     // Auto-detect current variant from various sources
     function detectCurrentVariant(experiment) {
         // Check debug override cookies first
-        const jsOverride = getCookie(`js_ab_test_override_${"${experiment}"}`);
+        const jsOverride = getCookie('js_ab_test_override_' + experiment);
         if (jsOverride) return jsOverride;
         
-        const override = getCookie(`ab_test_override_${"${experiment}"}`);
+        const override = getCookie('ab_test_override_' + experiment);
         if (override) return override;
         
         // Check localStorage overrides
@@ -185,7 +185,7 @@ class DebugMiddleware
         } catch (e) {}
         
         // Check for common Vue/React patterns
-        const element = document.querySelector(`[data-ab-test="${experiment}"]`);
+        const element = document.querySelector('[data-ab-test="' + experiment + '"]');
         if (element) {
             const variant = element.getAttribute('data-ab-variant');
             if (variant) return variant;
@@ -197,7 +197,7 @@ class DebugMiddleware
         }
         
         // Check localStorage for stored assignments
-        const stored = localStorage.getItem(`ab_test_${"${experiment}"}`);
+        const stored = localStorage.getItem('ab_test_' + experiment);
         if (stored) return stored;
         
         return null;
@@ -205,8 +205,8 @@ class DebugMiddleware
     
     // Helper function to get cookie value
     function getCookie(name) {
-        const value = `; ${"${document.cookie}"}`;
-        const parts = value.split(`; ${"${name}"}=`);
+        const value = '; ' + document.cookie;
+        const parts = value.split('; ' + name + '=');
         if (parts.length === 2) return parts.pop().split(';').shift();
         return null;
     }
@@ -216,9 +216,9 @@ class DebugMiddleware
         // Look for elements with AB test indicators
         const abElements = document.querySelectorAll('[class*="ab-test"], [data-ab-test], [data-variant]');
         
-        abElements.forEach(element => {
+        abElements.forEach(function(element) {
             const experiment = element.getAttribute('data-ab-test') || 
-                             element.className.match(/ab-test-([^\\s]+)/)?.[1];
+                             (element.className.match(/ab-test-([^\\s]+)/) || [])[1];
             const variant = element.getAttribute('data-ab-variant') || 
                            element.getAttribute('data-variant') ||
                            detectCurrentVariant(experiment);
@@ -248,8 +248,10 @@ class DebugMiddleware
             if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
                 mutation.addedNodes.forEach(function(node) {
                     if (node.nodeType === 1) { // Element node
-                        if (node.classList.contains('ab-test-red-button') || 
-                            node.querySelector && node.querySelector('[class*="ab-test"], [data-ab-test]')) {
+                        if (node.classList && node.classList.contains('ab-test-red-button')) {
+                            shouldScan = true;
+                        }
+                        if (node.querySelector && node.querySelector('[class*="ab-test"], [data-ab-test]')) {
                             shouldScan = true;
                         }
                     }

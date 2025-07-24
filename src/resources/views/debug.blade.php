@@ -89,7 +89,7 @@
 </div>
 
 <script>
-// Enhanced A/B Testing Debug Panel
+// A/B Testing Debug Panel
 (function() {
     const panel = document.getElementById('ab-test-debug');
     let isDragging = false;
@@ -124,7 +124,7 @@
 
     panel.style.cursor = 'grab';
 
-    // Functions for the enhanced debug panel
+    // Debug panel functions
     window.toggleDebugPanel = function() {
         const content = document.getElementById('debug-content');
         if (isCollapsed) {
@@ -137,37 +137,34 @@
     };
 
     window.switchVariant = function(experiment, variant) {
-        // Set override cookie for Laravel-based experiments
-        document.cookie = `ab_test_override_${experiment}=${variant}; path=/; max-age=3600`;
+        // Set override cookies
+        document.cookie = 'ab_test_override_' + experiment + '=' + variant + '; path=/; max-age=3600';
+        document.cookie = 'js_ab_test_override_' + experiment + '=' + variant + '; path=/; max-age=3600';
 
-        // Also set override for JavaScript-based experiments
-        document.cookie = `js_ab_test_override_${experiment}=${variant}; path=/; max-age=3600`;
-
-        // Update localStorage for JavaScript A/B tests
+        // Update localStorage
         const jsOverrides = JSON.parse(localStorage.getItem('ab_test_overrides') || '{}');
         jsOverrides[experiment] = variant;
         localStorage.setItem('ab_test_overrides', JSON.stringify(jsOverrides));
 
         // Visual feedback
         const button = event.target;
-        const originalText = button.textContent;
         button.textContent = '✓ Set!';
         button.style.background = 'rgba(16,185,129,0.4)';
         button.style.borderColor = '#10b981';
         button.style.color = '#6ee7b7';
 
-        // Notify any JavaScript A/B test listeners
+        // Notify listeners
         window.dispatchEvent(new CustomEvent('ab-test-variant-changed', {
-            detail: { experiment, variant }
+            detail: { experiment: experiment, variant: variant }
         }));
 
-        setTimeout(() => {
+        setTimeout(function() {
             location.reload();
         }, 500);
     };
 
     window.clearAllOverrides = function() {
-        // Clear all ab_test_override cookies (Laravel-based)
+        // Clear cookies
         document.cookie.split(";").forEach(function(c) {
             const cookie = c.trim();
             if (cookie.indexOf('ab_test_override_') === 0 || cookie.indexOf('js_ab_test_override_') === 0) {
@@ -176,13 +173,13 @@
             }
         });
 
-        // Clear localStorage overrides for JavaScript A/B tests
+        // Clear localStorage
         localStorage.removeItem('ab_test_overrides');
 
-        // Notify JavaScript A/B test listeners
+        // Notify listeners
         window.dispatchEvent(new CustomEvent('ab-test-overrides-cleared'));
 
-        setTimeout(() => {
+        setTimeout(function() {
             location.reload();
         }, 200);
     };
@@ -192,48 +189,19 @@
     };
 
     window.refreshDebugPanel = function() {
-        // Create a route to get debug info if it doesn't exist
-        fetch('/debug-info', {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log('Debug data refreshed:', data);
-            if (data.debug_experiments && Object.keys(data.debug_experiments).length > 0) {
-                // If we have experiments now, reload the page to show them
-                location.reload();
-            } else {
-                // Update the "no experiments" message
-                const content = document.getElementById('debug-content');
-                if (content && content.innerHTML.includes('No A/B tests active')) {
-                    // Already showing the right message
-                    console.log('No experiments found');
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Failed to refresh debug panel:', error);
-            // Fallback to page reload
-            location.reload();
-        });
+        location.reload();
     };
 
     window.clearAbSession = function() {
-        // Clear A/B testing session via AJAX
         fetch('/ab-testing/clear-session', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content || ''
             }
-        }).then(() => {
+        }).then(function() {
             location.reload();
-        }).catch(() => {
-            // Fallback: try to clear via browser
+        }).catch(function() {
             sessionStorage.clear();
             location.reload();
         });
