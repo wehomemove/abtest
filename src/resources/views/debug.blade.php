@@ -1,4 +1,8 @@
-@if(config('app.debug') && !empty($experiments))
+@php
+    use Illuminate\Support\Facades\DB;
+@endphp
+
+@if(config('app.debug'))
 <div id="ab-test-debug" style="position: fixed; bottom: 20px; right: 20px; background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; border-radius: 12px; font-family: ui-monospace, 'SF Mono', Monaco, monospace; font-size: 12px; z-index: 999999; box-shadow: 0 8px 25px rgba(0,0,0,0.4); min-width: 320px; max-width: 400px; border: 1px solid rgba(255,255,255,0.1); cursor: grab; user-select: none;">
     <!-- Header -->
     <div style="display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); border-radius: 12px 12px 0 0;">
@@ -22,10 +26,10 @@
                 $variants = $experiment ? json_decode($experiment->variants, true) : [];
                 $recentEvents = collect();
 
-                if ($experiment) {
+                if ($experiment && isset($userInfo['user_id']) && $userInfo['user_id'] !== 'not_set') {
                     $recentEvents = DB::table('ab_events')
                         ->where('experiment_id', $experiment->id)
-                        ->where('user_id', session('ab_user_id'))
+                        ->where('user_id', $userInfo['user_id'])
                         ->orderBy('created_at', 'desc')
                         ->limit(10)
                         ->get();
