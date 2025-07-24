@@ -56,4 +56,58 @@ class DebugMiddleware
 
         return $response;
     }
+
+    /**
+     * Get the A/B testing JavaScript helper code
+     */
+    protected function getAbTestingJavaScript(): string
+    {
+        $csrfToken = csrf_token();
+        
+        return <<<HTML
+<script>
+// A/B Testing JavaScript Helper (auto-injected)
+if (typeof window.abtrack === 'undefined') {
+    window.abtrack = function(experiment, event, properties = {}) {
+        return fetch('/api/ab-testing/track', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{$csrfToken}'
+            },
+            body: JSON.stringify({
+                experiment: experiment,
+                event: event,
+                properties: properties
+            })
+        }).catch(error => {
+            console.error('A/B test tracking error:', error);
+        });
+    };
+}
+
+if (typeof window.abvariant === 'undefined') {
+    window.abvariant = function(experiment, userId = null) {
+        return fetch('/api/ab-testing/variant', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{$csrfToken}'
+            },
+            body: JSON.stringify({
+                experiment: experiment,
+                user_id: userId
+            })
+        })
+        .then(response => response.json())
+        .then(data => data.variant)
+        .catch(error => {
+            console.error('A/B test variant error:', error);
+            return 'control';
+        });
+    };
+}
+</script>
+HTML;
+    }
 }
