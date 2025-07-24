@@ -16,7 +16,6 @@
             </div>
         @else
             @foreach($experiments as $experimentName => $data)
-
                 <div style="margin-bottom: 16px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 4px solid #10b981;">
                     <!-- Experiment Header -->
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
