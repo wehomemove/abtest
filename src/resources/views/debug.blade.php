@@ -1,211 +1,122 @@
+@php
+    // Ensure all required variables exist with defaults
+    $experiments = $experiments ?? [];
+    $userInfo = $userInfo ?? [
+        'user_id' => 'unknown',
+        'source' => 'unknown',
+        'cookie_exists' => false,
+        'session_exists' => false
+    ];
+@endphp
+
 @if(config('app.debug'))
-<div id="ab-test-debug" style="position: fixed; bottom: 20px; right: 20px; background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white; border-radius: 12px; font-family: ui-monospace, 'SF Mono', Monaco, monospace; font-size: 12px; z-index: 999999; box-shadow: 0 8px 25px rgba(0,0,0,0.4); min-width: 320px; max-width: 400px; border: 1px solid rgba(255,255,255,0.1); cursor: grab; user-select: none;">
-    <!-- Header -->
-    <div style="display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); border-radius: 12px 12px 0 0;">
-        <span style="margin-right: 8px; font-size: 14px;">🧪</span>
-        <span style="font-weight: 600; flex: 1;">A/B Testing Debugger</span>
-        <button onclick="toggleDebugPanel()" style="background: rgba(255,255,255,0.1); border: none; color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; margin-right: 8px; transition: background 0.2s;">△</button>
-        <button onclick="document.getElementById('ab-test-debug').style.display='none'" style="background: rgba(239,68,68,0.2); border: none; color: #fca5a5; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; transition: background 0.2s;">×</button>
+<div id="ab-test-debug" style="position: fixed; bottom: 20px; right: 20px; background: #1e293b; color: white; border-radius: 8px; font-family: monospace; font-size: 12px; z-index: 999999; box-shadow: 0 4px 20px rgba(0,0,0,0.3); min-width: 300px; border: 1px solid #374151; padding: 16px;">
+    <div style="display: flex; align-items: center; margin-bottom: 12px;">
+        <span style="margin-right: 8px;">🧪</span>
+        <span style="font-weight: bold;">A/B Testing Debugger</span>
+        <button onclick="document.getElementById('ab-test-debug').style.display='none'" style="margin-left: auto; background: #ef4444; border: none; color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer;">×</button>
     </div>
-
-    <div id="debug-content" style="padding: 16px;">
-        @if(empty($experiments))
-            <div style="text-align: center; color: rgba(255,255,255,0.7); padding: 20px;">
-                <p style="margin: 0; font-size: 11px;">No A/B tests active on this page</p>
-                <p style="margin: 4px 0 0 0; font-size: 9px;">Use @variant() directive to activate experiments</p>
-            </div>
-        @else
-            @foreach($experiments as $experimentName => $data)
-                <div style="margin-bottom: 16px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 4px solid #10b981;">
-                    <!-- Experiment Header -->
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                        <div>
-                            <div style="font-weight: 600; color: #10b981; font-size: 13px;">{{ $experimentName }}</div>
-                            <div style="font-size: 10px; color: rgba(255,255,255,0.6);">{{ $data['calls'] }} calls this request</div>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="background: rgba(16,185,129,0.2); color: #6ee7b7; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">{{ $data['variant'] }}</span>
-                        </div>
-                    </div>
-
-                    <!-- Variant Switcher -->
+    
+    @if(empty($experiments))
+        <div style="text-align: center; color: #9ca3af; padding: 20px;">
+            <p style="margin: 0;">No A/B tests active on this page</p>
+        </div>
+    @else
+        @foreach($experiments as $experimentName => $experimentData)
+            @php
+                // Ensure experiment data has all required fields
+                $experimentData = is_array($experimentData) ? $experimentData : [];
+                $calls = $experimentData['calls'] ?? 0;
+                $variant = $experimentData['variant'] ?? 'unknown';
+                $variants = $experimentData['variants'] ?? [];
+                $source = $experimentData['source'] ?? null;
+            @endphp
+            
+            <div style="margin-bottom: 12px; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
+                <div style="font-weight: bold; color: #10b981; margin-bottom: 4px;">{{ $experimentName }}</div>
+                <div style="font-size: 10px; color: #d1d5db; margin-bottom: 8px;">
+                    {{ $calls }} calls • 
+                    Variant: <strong>{{ $variant }}</strong>
+                </div>
+                
+                @if(is_array($variants) && count($variants) > 0)
                     <div style="margin-bottom: 8px;">
-                        <div style="font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 4px;">Switch Variant:</div>
-                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                            @if(isset($data['variants']) && is_array($data['variants']))
-                                @foreach($data['variants'] as $variant => $weight)
-                                    <button
-                                        onclick="switchVariant('{{ $experimentName }}', '{{ $variant }}')"
-                                        style="background: {{ $variant === $data['variant'] ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)' }};
-                                               border: 1px solid {{ $variant === $data['variant'] ? '#10b981' : 'rgba(255,255,255,0.2)' }};
-                                               color: {{ $variant === $data['variant'] ? '#6ee7b7' : 'rgba(255,255,255,0.8)' }};
-                                               padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: 500; transition: all 0.2s;">
-                                        {{ $variant }} ({{ $weight }}%)
-                                    </button>
-                                @endforeach
-                            @else
-                                <span style="background: rgba(16,185,129,0.3); border: 1px solid #10b981; color: #6ee7b7; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 500;">
-                                    {{ $data['variant'] }}
-                                </span>
-                            @endif
-                        </div>
-                        @if(isset($data['source']))
-                            <div style="font-size: 9px; color: rgba(255,255,255,0.5); margin-top: 4px;">
-                                Source: {{ ucfirst($data['source']) }}
-                            </div>
-                        @endif
+                        <div style="font-size: 10px; color: #d1d5db; margin-bottom: 4px;">Switch Variant:</div>
+                        @foreach($variants as $variantName => $weight)
+                            <button onclick="switchVariant('{{ $experimentName }}', '{{ $variantName }}')" 
+                                    style="background: {{ $variantName === $variant ? '#10b981' : '#374151' }}; border: none; color: white; padding: 4px 8px; margin-right: 4px; border-radius: 4px; cursor: pointer; font-size: 10px;">
+                                {{ $variantName }} ({{ $weight }}%)
+                            </button>
+                        @endforeach
                     </div>
-                </div>
-            @endforeach
-        @endif
-
-        <!-- Actions -->
-        <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
-            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                <button onclick="clearAllOverrides()" style="background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Clear Overrides</button>
-                <button onclick="refreshDebugPanel()" style="background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #86efac; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Refresh Data</button>
-                <button onclick="refreshPage()" style="background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Reload Page</button>
+                @endif
+                
+                @if($source)
+                    <div style="font-size: 9px; color: #9ca3af;">Source: {{ $source }}</div>
+                @endif
             </div>
-            <div style="font-size: 9px; color: rgba(255,255,255,0.5); text-align: center;">
-                <div style="margin-bottom: 4px;">
-                    <span style="color: rgba(255,255,255,0.7);">User ID:</span> 
-                    <span style="font-family: monospace; color: #fbbf24;">{{ substr($userInfo['user_id'], 0, 8) }}...</span>
-                </div>
-                <div style="margin-bottom: 4px; display: flex; justify-content: center; gap: 8px;">
-                    <span style="color: {{ $userInfo['source'] === 'cookie' ? '#10b981' : 'rgba(255,255,255,0.4)' }};">
-                        🍪 {{ $userInfo['cookie_exists'] ? 'Cookie' : 'No Cookie' }}
-                    </span>
-                    <span style="color: {{ $userInfo['source'] === 'session' ? '#10b981' : 'rgba(255,255,255,0.4)' }};">
-                        📝 {{ $userInfo['session_exists'] ? 'Session' : 'No Session' }}
-                    </span>
-                </div>
-                <div style="margin-bottom: 4px;">
-                    <span style="color: #10b981; font-weight: 600;">Source: {{ ucfirst($userInfo['source']) }}</span>
-                </div>
-                <button onclick="clearAbSession()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; margin-top: 4px;">Reset A/B Session</button>
+        @endforeach
+    @endif
+    
+    <div style="border-top: 1px solid #374151; padding-top: 8px; margin-top: 8px;">
+        <button onclick="clearAllOverrides()" style="background: #ef4444; border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 10px; margin-right: 8px;">Clear Overrides</button>
+        <button onclick="location.reload()" style="background: #3b82f6; border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 10px;">Reload</button>
+    </div>
+    
+    @if($userInfo && is_array($userInfo))
+        @php
+            $userId = $userInfo['user_id'] ?? 'unknown';
+            $source = $userInfo['source'] ?? 'unknown';
+            $cookieExists = $userInfo['cookie_exists'] ?? false;
+            $sessionExists = $userInfo['session_exists'] ?? false;
+        @endphp
+        
+        <div style="font-size: 9px; color: rgba(255,255,255,0.5); text-align: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid #374151;">
+            <div style="margin-bottom: 4px;">
+                User ID: <span style="font-family: monospace; color: #fbbf24;">{{ substr($userId, 0, 8) }}...</span>
+            </div>
+            <div style="margin-bottom: 4px;">
+                Source: <span style="color: #10b981;">{{ ucfirst($source) }}</span>
+            </div>
+            <div style="margin-bottom: 4px; display: flex; justify-content: center; gap: 8px;">
+                <span style="color: {{ $cookieExists ? '#10b981' : 'rgba(255,255,255,0.4)' }};">
+                    🍪 {{ $cookieExists ? 'Cookie' : 'No Cookie' }}
+                </span>
+                <span style="color: {{ $sessionExists ? '#10b981' : 'rgba(255,255,255,0.4)' }};">
+                    📝 {{ $sessionExists ? 'Session' : 'No Session' }}
+                </span>
             </div>
         </div>
-    </div>
+    @endif
 </div>
 
 <script>
-// A/B Testing Debug Panel
-(function() {
-    const panel = document.getElementById('ab-test-debug');
-    let isDragging = false;
-    let currentX, currentY, initialX, initialY;
-    let isCollapsed = false;
+window.switchVariant = function(experiment, variant) {
+    document.cookie = 'ab_test_override_' + experiment + '=' + variant + '; path=/; max-age=3600';
+    document.cookie = 'js_ab_test_override_' + experiment + '=' + variant + '; path=/; max-age=3600';
+    
+    var jsOverrides = JSON.parse(localStorage.getItem('ab_test_overrides') || '{}');
+    jsOverrides[experiment] = variant;
+    localStorage.setItem('ab_test_overrides', JSON.stringify(jsOverrides));
+    
+    setTimeout(function() { 
+        location.reload(); 
+    }, 300);
+};
 
-    // Make draggable
-    panel.addEventListener('mousedown', function(e) {
-        if (!e.target.closest('button') && !e.target.closest('select')) {
-            isDragging = true;
-            initialX = e.clientX - panel.offsetLeft;
-            initialY = e.clientY - panel.offsetTop;
-            panel.style.cursor = 'grabbing';
+window.clearAllOverrides = function() {
+    var cookies = document.cookie.split(";");
+    for (var i = 0; i < cookies.length; i++) {
+        var cookie = cookies[i].trim();
+        if (cookie.indexOf('ab_test_override_') === 0 || cookie.indexOf('js_ab_test_override_') === 0) {
+            var cookieName = cookie.split('=')[0];
+            document.cookie = cookieName + '=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
         }
-    });
-
-    document.addEventListener('mousemove', function(e) {
-        if (isDragging) {
-            currentX = e.clientX - initialX;
-            currentY = e.clientY - initialY;
-            panel.style.left = currentX + 'px';
-            panel.style.top = currentY + 'px';
-            panel.style.right = 'auto';
-            panel.style.bottom = 'auto';
-        }
-    });
-
-    document.addEventListener('mouseup', function() {
-        isDragging = false;
-        panel.style.cursor = 'grab';
-    });
-
-    panel.style.cursor = 'grab';
-
-    // Debug panel functions
-    window.toggleDebugPanel = function() {
-        const content = document.getElementById('debug-content');
-        if (isCollapsed) {
-            content.style.display = 'block';
-            isCollapsed = false;
-        } else {
-            content.style.display = 'none';
-            isCollapsed = true;
-        }
-    };
-
-    window.switchVariant = function(experiment, variant) {
-        // Set override cookies
-        document.cookie = 'ab_test_override_' + experiment + '=' + variant + '; path=/; max-age=3600';
-        document.cookie = 'js_ab_test_override_' + experiment + '=' + variant + '; path=/; max-age=3600';
-
-        // Update localStorage
-        const jsOverrides = JSON.parse(localStorage.getItem('ab_test_overrides') || '{}');
-        jsOverrides[experiment] = variant;
-        localStorage.setItem('ab_test_overrides', JSON.stringify(jsOverrides));
-
-        // Visual feedback
-        const button = event.target;
-        button.textContent = '✓ Set!';
-        button.style.background = 'rgba(16,185,129,0.4)';
-        button.style.borderColor = '#10b981';
-        button.style.color = '#6ee7b7';
-
-        // Notify listeners
-        window.dispatchEvent(new CustomEvent('ab-test-variant-changed', {
-            detail: { experiment: experiment, variant: variant }
-        }));
-
-        setTimeout(function() {
-            location.reload();
-        }, 500);
-    };
-
-    window.clearAllOverrides = function() {
-        // Clear cookies
-        document.cookie.split(";").forEach(function(c) {
-            const cookie = c.trim();
-            if (cookie.indexOf('ab_test_override_') === 0 || cookie.indexOf('js_ab_test_override_') === 0) {
-                const cookieName = cookie.split('=')[0];
-                document.cookie = cookieName + '=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-            }
-        });
-
-        // Clear localStorage
-        localStorage.removeItem('ab_test_overrides');
-
-        // Notify listeners
-        window.dispatchEvent(new CustomEvent('ab-test-overrides-cleared'));
-
-        setTimeout(function() {
-            location.reload();
-        }, 200);
-    };
-
-    window.refreshPage = function() {
-        location.reload();
-    };
-
-    window.refreshDebugPanel = function() {
-        location.reload();
-    };
-
-    window.clearAbSession = function() {
-        fetch('/ab-testing/clear-session', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content || ''
-            }
-        }).then(function() {
-            location.reload();
-        }).catch(function() {
-            sessionStorage.clear();
-            location.reload();
-        });
-    };
-})();
+    }
+    localStorage.removeItem('ab_test_overrides');
+    setTimeout(function() { 
+        location.reload(); 
+    }, 200);
+};
 </script>
 @endif
