@@ -280,12 +280,25 @@ class AbTestService
      */
     protected function getSessionUserId(): string
     {
+        // Ensure session is started
+        if (!session()->isStarted()) {
+            session()->start();
+        }
+
         if (session()->has('ab_user_id')) {
-            return session('ab_user_id');
+            $existingUserId = session('ab_user_id');
+            \Log::debug('AB Testing: Using existing session user ID', ['user_id' => $existingUserId]);
+            return $existingUserId;
         }
 
         $userId = Str::uuid()->toString();
         session(['ab_user_id' => $userId]);
+        session()->save(); // Force save the session
+        
+        \Log::debug('AB Testing: Created new session user ID', [
+            'user_id' => $userId,
+            'session_id' => session()->getId()
+        ]);
         
         return $userId;
     }

@@ -41,10 +41,15 @@ class DebugMiddleware
         }
 
         try {
+            // Inject A/B testing JavaScript helper
+            $jsHelper = $this->getAbTestingJavaScript();
             $debugHtml = view('ab-testing::debug', compact('experiments'))->render();
-            $content = str_replace('</body>', $debugHtml . '</body>', $content);
+            
+            // Inject both JS helper and debug panel
+            $injection = $jsHelper . $debugHtml;
+            $content = str_replace('</body>', $injection . '</body>', $content);
             $response->setContent($content);
-            \Log::info('AB Debug: Successfully injected debug HTML');
+            \Log::info('AB Debug: Successfully injected JS helper and debug HTML');
         } catch (\Exception $e) {
             \Log::error('AB Debug: Failed to render debug view', ['error' => $e->getMessage()]);
         }
