@@ -47,7 +47,6 @@ class AbTestingServiceProvider extends ServiceProvider
 
         $this->registerBladeDirectives();
         $this->registerMiddleware();
-        $this->registerDebugInjection();
     }
 
     protected function registerBladeDirectives()
