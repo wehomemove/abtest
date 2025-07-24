@@ -76,8 +76,21 @@
                 <button onclick="refreshPage()" style="background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Refresh</button>
             </div>
             <div style="font-size: 9px; color: rgba(255,255,255,0.5); text-align: center;">
-                {{session('ab_user_id', 'guest')}}<br>
-                {{ session('ab_session_id', 'no session') }}
+                <div style="margin-bottom: 4px;">
+                    <span style="color: rgba(255,255,255,0.7);">User ID:</span> 
+                    <span style="font-family: monospace; color: #fbbf24;">{{ substr($userInfo['user_id'], 0, 8) }}...</span>
+                </div>
+                <div style="margin-bottom: 4px; display: flex; justify-content: center; gap: 8px;">
+                    <span style="color: {{ $userInfo['source'] === 'cookie' ? '#10b981' : 'rgba(255,255,255,0.4)' }};">
+                        🍪 {{ $userInfo['cookie_exists'] ? 'Cookie' : 'No Cookie' }}
+                    </span>
+                    <span style="color: {{ $userInfo['source'] === 'session' ? '#10b981' : 'rgba(255,255,255,0.4)' }};">
+                        📝 {{ $userInfo['session_exists'] ? 'Session' : 'No Session' }}
+                    </span>
+                </div>
+                <div style="margin-bottom: 4px;">
+                    <span style="color: #10b981; font-weight: 600;">Source: {{ ucfirst($userInfo['source']) }}</span>
+                </div>
                 <button onclick="clearAbSession()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.8); padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 8px; margin-top: 4px;">Reset A/B Session</button>
             </div>
         </div>

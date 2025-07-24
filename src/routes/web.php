@@ -22,8 +22,13 @@ Route::prefix('ab-testing')
         
         // Debug routes
         Route::post('/clear-session', function () {
+            // Clear session
             session()->forget('ab_user_id');
             session()->save();
+            
+            // Clear A/B testing cookie
+            setcookie('ab_user_id', '', time() - 3600, '/', '', false, true);
+            
             return response()->json(['success' => true]);
         })->name('clear-session');
     });

@@ -280,27 +280,47 @@ class AbTestService
      */
     protected function getSessionUserId(): string
     {
-        // Ensure session is started
-        if (!session()->isStarted()) {
-            session()->start();
+        // First try to get from cookie (most reliable)
+        if (isset($_COOKIE['ab_user_id'])) {
+            return $_COOKIE['ab_user_id'];
         }
 
-        if (session()->has('ab_user_id')) {
-            $existingUserId = session('ab_user_id');
-            \Log::debug('AB Testing: Using existing session user ID', ['user_id' => $existingUserId]);
-            return $existingUserId;
+        // Try session as fallback
+        if (session()->isStarted() && session()->has('ab_user_id')) {
+            $userId = session('ab_user_id');
+            // Also store in cookie for reliability
+            $this->setUserIdCookie($userId);
+            return $userId;
         }
 
+        // Generate new user ID
         $userId = Str::uuid()->toString();
-        session(['ab_user_id' => $userId]);
-        session()->save(); // Force save the session
         
-        \Log::debug('AB Testing: Created new session user ID', [
-            'user_id' => $userId,
-            'session_id' => session()->getId()
-        ]);
+        // Store in both cookie and session
+        $this->setUserIdCookie($userId);
+        
+        try {
+            if (!session()->isStarted()) {
+                session()->start();
+            }
+            session(['ab_user_id' => $userId]);
+            session()->save();
+        } catch (\Exception $e) {
+            // Session might not be available, cookie will handle it
+            \Log::debug('AB Testing: Session not available, using cookie only', ['error' => $e->getMessage()]);
+        }
         
         return $userId;
+    }
+
+    /**
+     * Set the user ID cookie
+     */
+    protected function setUserIdCookie(string $userId): void
+    {
+        // Set cookie for 30 days
+        $expire = time() + (30 * 24 * 60 * 60);
+        setcookie('ab_user_id', $userId, $expire, '/', '', false, true);
     }
 
     /**
@@ -343,5 +363,33 @@ class AbTestService
     public function getDebugExperiments(): array
     {
         return $this->debugExperiments;
+    }
+
+    /**
+     * Get debug information about user ID source
+     */
+    public function getDebugUserInfo(): array
+    {
+        $userId = null;
+        $source = 'none';
+        
+        // Check cookie first
+        if (isset($_COOKIE['ab_user_id'])) {
+            $userId = $_COOKIE['ab_user_id'];
+            $source = 'cookie';
+        }
+        // Check session as fallback
+        elseif (session()->isStarted() && session()->has('ab_user_id')) {
+            $userId = session('ab_user_id');
+            $source = 'session';
+        }
+        
+        return [
+            'user_id' => $userId ?? 'not_set',
+            'source' => $source,
+            'cookie_exists' => isset($_COOKIE['ab_user_id']),
+            'session_exists' => session()->isStarted() && session()->has('ab_user_id'),
+            'session_started' => session()->isStarted()
+        ];
     }
 }
