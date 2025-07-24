@@ -29,17 +29,32 @@
                         </div>
                     </div>
 
-                    <!-- Variant Info -->
+                    <!-- Variant Switcher -->
                     <div style="margin-bottom: 8px;">
-                        <div style="font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 4px;">Current Variant:</div>
+                        <div style="font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 4px;">Switch Variant:</div>
                         <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                            <span style="background: rgba(16,185,129,0.3); border: 1px solid #10b981; color: #6ee7b7; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 500;">
-                                {{ $data['variant'] }}
-                            </span>
+                            @if(isset($data['variants']) && is_array($data['variants']))
+                                @foreach($data['variants'] as $variant => $weight)
+                                    <button
+                                        onclick="switchVariant('{{ $experimentName }}', '{{ $variant }}')"
+                                        style="background: {{ $variant === $data['variant'] ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)' }};
+                                               border: 1px solid {{ $variant === $data['variant'] ? '#10b981' : 'rgba(255,255,255,0.2)' }};
+                                               color: {{ $variant === $data['variant'] ? '#6ee7b7' : 'rgba(255,255,255,0.8)' }};
+                                               padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: 500; transition: all 0.2s;">
+                                        {{ $variant }} ({{ $weight }}%)
+                                    </button>
+                                @endforeach
+                            @else
+                                <span style="background: rgba(16,185,129,0.3); border: 1px solid #10b981; color: #6ee7b7; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 500;">
+                                    {{ $data['variant'] }}
+                                </span>
+                            @endif
                         </div>
-                        <div style="font-size: 9px; color: rgba(255,255,255,0.5); margin-top: 4px;">
-                            Use debug overrides via browser cookies to test different variants
-                        </div>
+                        @if(isset($data['source']))
+                            <div style="font-size: 9px; color: rgba(255,255,255,0.5); margin-top: 4px;">
+                                Source: {{ ucfirst($data['source']) }}
+                            </div>
+                        @endif
                     </div>
                 </div>
             @endforeach
@@ -123,13 +138,29 @@
     };
 
     window.switchVariant = function(experiment, variant) {
-        // Set override cookie
+        // Set override cookie for Laravel-based experiments
         document.cookie = `ab_test_override_${experiment}=${variant}; path=/; max-age=3600`;
+
+        // Also set override for JavaScript-based experiments
+        document.cookie = `js_ab_test_override_${experiment}=${variant}; path=/; max-age=3600`;
+
+        // Update localStorage for JavaScript A/B tests
+        const jsOverrides = JSON.parse(localStorage.getItem('ab_test_overrides') || '{}');
+        jsOverrides[experiment] = variant;
+        localStorage.setItem('ab_test_overrides', JSON.stringify(jsOverrides));
 
         // Visual feedback
         const button = event.target;
+        const originalText = button.textContent;
         button.textContent = '✓ Set!';
-        button.className = button.className.replace(/bg-\w+\/\d+/g, 'bg-emerald-500/40');
+        button.style.background = 'rgba(16,185,129,0.4)';
+        button.style.borderColor = '#10b981';
+        button.style.color = '#6ee7b7';
+
+        // Notify any JavaScript A/B test listeners
+        window.dispatchEvent(new CustomEvent('ab-test-variant-changed', {
+            detail: { experiment, variant }
+        }));
 
         setTimeout(() => {
             location.reload();
@@ -137,14 +168,20 @@
     };
 
     window.clearAllOverrides = function() {
-        // Clear all ab_test_override cookies
+        // Clear all ab_test_override cookies (Laravel-based)
         document.cookie.split(";").forEach(function(c) {
             const cookie = c.trim();
-            if (cookie.indexOf('ab_test_override_') === 0) {
+            if (cookie.indexOf('ab_test_override_') === 0 || cookie.indexOf('js_ab_test_override_') === 0) {
                 const cookieName = cookie.split('=')[0];
                 document.cookie = cookieName + '=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
             }
         });
+
+        // Clear localStorage overrides for JavaScript A/B tests
+        localStorage.removeItem('ab_test_overrides');
+
+        // Notify JavaScript A/B test listeners
+        window.dispatchEvent(new CustomEvent('ab-test-overrides-cleared'));
 
         setTimeout(() => {
             location.reload();

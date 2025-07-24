@@ -358,6 +358,42 @@ class AbTestService
     }
 
     /**
+     * Register JavaScript-based experiment for debug panel
+     */
+    public function registerJsDebugExperiment(string $experimentName, string $variant, string $source = 'javascript'): void
+    {
+        if (!config('app.debug')) {
+            return;
+        }
+
+        if (!isset($this->debugExperiments[$experimentName])) {
+            $this->debugExperiments[$experimentName] = [
+                'variant' => $variant,
+                'calls' => 0,
+                'source' => $source,
+                'variants' => $this->getExperimentVariants($experimentName)
+            ];
+        }
+        
+        $this->debugExperiments[$experimentName]['calls']++;
+        $this->debugExperiments[$experimentName]['variant'] = $variant; // Update current variant
+    }
+
+    /**
+     * Get experiment variants from database
+     */
+    protected function getExperimentVariants(string $experimentName): array
+    {
+        $experiment = $this->getExperiment($experimentName);
+        if (!$experiment) {
+            // Default variants if experiment not found in database
+            return ['control' => 50, 'red_buttons' => 50];
+        }
+
+        return json_decode($experiment->variants, true) ?? [];
+    }
+
+    /**
      * Get debug experiments for current request
      */
     public function getDebugExperiments(): array

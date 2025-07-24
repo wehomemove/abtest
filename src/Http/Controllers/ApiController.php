@@ -71,6 +71,37 @@ class ApiController extends Controller
         }
     }
 
+    public function registerDebugExperiment(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'experiment' => 'required|string',
+                'variant' => 'required|string',
+                'source' => 'string|nullable',
+            ]);
+
+            $service = app('ab-testing');
+            $service->registerJsDebugExperiment(
+                $validated['experiment'],
+                $validated['variant'],
+                $validated['source'] ?? 'javascript'
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Debug experiment registered successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('A/B Test debug registration error: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to register debug experiment'
+            ], 500);
+        }
+    }
+
     public function getResults(Request $request, $experiment)
     {
         try {

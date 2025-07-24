@@ -64,6 +64,7 @@ class DebugMiddleware
     protected function getAbTestingJavaScript(): string
     {
         $csrfToken = csrf_token();
+        $debugEnabled = config('app.debug') ? 'true' : 'false';
 
         return <<<HTML
 <script>
@@ -108,6 +109,33 @@ if (typeof window.abvariant === 'undefined') {
         });
     };
 }
+
+if (typeof window.abregisterDebug === 'undefined') {
+    window.abregisterDebug = function(experiment, variant, source = 'javascript') {
+        if (!window.ABTestingConfig?.debug) return Promise.resolve();
+        
+        return fetch('/api/ab-testing/register-debug', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': '{$csrfToken}'
+            },
+            body: JSON.stringify({
+                experiment: experiment,
+                variant: variant,
+                source: source
+            })
+        }).catch(error => {
+            console.error('A/B test debug registration error:', error);
+        });
+    };
+}
+
+// Set debug config
+window.ABTestingConfig = {
+    debug: {$debugEnabled},
+    csrfToken: '{$csrfToken}'
+};
 </script>
 HTML;
     }
