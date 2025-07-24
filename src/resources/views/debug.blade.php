@@ -9,6 +9,13 @@
     </div>
 
     <div id="debug-content" style="padding: 16px;">
+        @if(empty($experiments))
+            <div style="text-align: center; color: rgba(255,255,255,0.7); padding: 20px;">
+                <p style="margin: 0; font-size: 11px;">No A/B tests active on this page</p>
+                <p style="margin: 4px 0 0 0; font-size: 9px;">Use @variant() directive to activate experiments</p>
+            </div>
+        @endif
+        
         @foreach($experiments as $experimentName => $data)
             @php
                 $experiment = DB::table('ab_experiments')->where('name', $experimentName)->first();
@@ -73,7 +80,8 @@
         <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
             <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                 <button onclick="clearAllOverrides()" style="background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Clear Overrides</button>
-                <button onclick="refreshPage()" style="background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Refresh</button>
+                <button onclick="refreshDebugPanel()" style="background: rgba(34,197,94,0.2); border: 1px solid rgba(34,197,94,0.3); color: #86efac; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Refresh Data</button>
+                <button onclick="refreshPage()" style="background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; flex: 1; transition: background 0.2s;">Reload Page</button>
             </div>
             <div style="font-size: 9px; color: rgba(255,255,255,0.5); text-align: center;">
                 <div style="margin-bottom: 4px;">
@@ -176,6 +184,37 @@
 
     window.refreshPage = function() {
         location.reload();
+    };
+
+    window.refreshDebugPanel = function() {
+        // Create a route to get debug info if it doesn't exist
+        fetch('/debug-info', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Debug data refreshed:', data);
+            if (data.debug_experiments && Object.keys(data.debug_experiments).length > 0) {
+                // If we have experiments now, reload the page to show them
+                location.reload();
+            } else {
+                // Update the "no experiments" message
+                const content = document.getElementById('debug-content');
+                if (content && content.innerHTML.includes('No A/B tests active')) {
+                    // Already showing the right message
+                    console.log('No experiments found');
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Failed to refresh debug panel:', error);
+            // Fallback to page reload
+            location.reload();
+        });
     };
 
     window.clearAbSession = function() {

@@ -30,9 +30,8 @@ class DebugMiddleware
             'experiments_count' => count($experiments)
         ]);
 
-        if (empty($experiments)) {
-            return $response;
-        }
+        // Always show debug panel when debug is enabled, even if no experiments yet
+        // Experiments may be populated after middleware runs
 
         $content = $response->getContent();
 

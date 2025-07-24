@@ -20,25 +20,71 @@ A comprehensive Laravel package for A/B testing with user-organized event tracki
 - 🎛️ **Traffic Control** - Precise traffic allocation and rollout controls
 - 📋 **Comprehensive Testing** - Full PHPUnit test coverage
 
-## 🚀 Quick Start
+## 🚀 Installation & Setup
 
-### 1. Installation
+### 1. Add Repository to composer.json
+
+Since this package is hosted on GitHub, add this to your project's `composer.json`:
+
+```json
+{
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/wehomemove/abtest"
+        }
+    ],
+    "require": {
+        "wehomemove/abtest": "^1.0"
+    }
+}
+```
+
+### 2. Install Package
 
 ```bash
 composer require wehomemove/abtest
 ```
 
-### 2. Setup
+### 3. Publish Assets & Run Migrations
 
 ```bash
 # Publish configuration and migrations
 php artisan vendor:publish --provider="Homemove\AbTesting\Providers\AbTestingServiceProvider"
 
-# Run migrations
+# Run migrations to create A/B testing tables
 php artisan migrate
+
+# Publish JavaScript assets (optional - auto-injected in debug mode)
+php artisan vendor:publish --provider="Homemove\AbTesting\Providers\AbTestingServiceProvider" --tag=assets
 ```
 
-### 3. Include JavaScript Helper
+### 4. Environment Configuration
+
+Add to your `.env` file:
+
+```env
+# A/B Testing Configuration
+AB_TESTING_ENABLED=true
+AB_TESTING_CACHE_TTL=3600
+AB_TESTING_DEBUG=true
+```
+
+### 5. Configure Caching (Recommended)
+
+For optimal performance, configure Redis caching in your `config/cache.php`:
+
+```php
+'stores' => [
+    'redis' => [
+        'driver' => 'redis',
+        'connection' => 'cache',
+        'prefix' => env('CACHE_PREFIX', 'laravel_cache:'),
+    ],
+],
+```
+
+### 6. Include JavaScript Helper
 
 Add to your layout file:
 ```html
@@ -57,7 +103,7 @@ window.abtrack = function(experiment, event, properties = {}) {
 </script>
 ```
 
-### 4. Track Events (Super Simple!)
+### 7. Track Events (Super Simple!)
 
 ```javascript
 // Basic tracking
@@ -73,7 +119,7 @@ abtrack('button_color_test', 'button_click', {
 abtrack('checkout_flow', 'conversion', { amount: 99.99 });
 ```
 
-### 5. Access Dashboard
+### 8. Access Dashboard
 
 Visit: **`http://your-app.test/ab-testing/dashboard`**
 
