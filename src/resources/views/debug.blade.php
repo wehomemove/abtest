@@ -92,16 +92,35 @@
 
 <script>
 window.switchVariant = function(experiment, variant) {
+    // Set override cookies for Laravel A/B tests
     document.cookie = 'ab_test_override_' + experiment + '=' + variant + '; path=/; max-age=3600';
     document.cookie = 'js_ab_test_override_' + experiment + '=' + variant + '; path=/; max-age=3600';
     
+    // Set localStorage overrides for JavaScript A/B tests
     var jsOverrides = JSON.parse(localStorage.getItem('ab_test_overrides') || '{}');
     jsOverrides[experiment] = variant;
     localStorage.setItem('ab_test_overrides', JSON.stringify(jsOverrides));
     
+    // For Vue components - set individual localStorage for the experiment
+    localStorage.setItem('ab_test_' + experiment, variant);
+    
+    // Visual feedback
+    var button = event.target;
+    var originalText = button.textContent;
+    button.textContent = '✓ Switching...';
+    button.style.background = '#10b981';
+    
+    // Notify any JavaScript A/B test listeners
+    if (window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('ab-test-variant-changed', {
+            detail: { experiment: experiment, variant: variant }
+        }));
+    }
+    
+    // Force reload to apply changes
     setTimeout(function() { 
         location.reload(); 
-    }, 300);
+    }, 500);
 };
 
 window.clearAllOverrides = function() {

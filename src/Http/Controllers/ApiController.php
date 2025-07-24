@@ -71,6 +71,28 @@ class ApiController extends Controller
         }
     }
 
+    public function getVariantByExperiment(Request $request, $experiment)
+    {
+        try {
+            $variant = AbTest::variant($experiment);
+
+            return response()->json([
+                'success' => true,
+                'variant' => $variant,
+                'experiment' => $experiment
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('A/B Test variant error: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'variant' => 'control',
+                'message' => 'Failed to get variant, defaulting to control'
+            ], 500);
+        }
+    }
+
     public function registerDebugExperiment(Request $request)
     {
         try {
