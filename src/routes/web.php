@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Homemove\AbTesting\Http\Controllers\DashboardController;
+use Homemove\AbTesting\Http\Controllers\TestController;
 
 Route::prefix('ab-testing')
     ->name('ab-testing.')
@@ -19,6 +20,9 @@ Route::prefix('ab-testing')
                 Route::delete('/{experiment}', [DashboardController::class, 'destroy'])->name('destroy');
                 Route::patch('/{experiment}/toggle', [DashboardController::class, 'toggleStatus'])->name('toggle');
             });
+        
+        // Test page
+        Route::get('/test', [TestController::class, 'index'])->name('test');
         
         // Debug routes
         Route::post('/clear-session', function () {
