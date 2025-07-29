@@ -39,10 +39,15 @@ class AbTestingServiceProvider extends ServiceProvider
             __DIR__.'/../resources/js/abtest.js' => public_path('vendor/abtest/abtest.js'),
         ], 'assets');
 
+        $this->publishes([
+            __DIR__.'/../resources/js/useAbTest.js' => resource_path('js/composables/useAbTest.js'),
+        ], 'composables');
+
         // Only publish config and migrations by default (no views)
         $this->publishes([
             __DIR__.'/../config/ab-testing.php' => config_path('ab-testing.php'),
             __DIR__.'/../database/migrations/' => database_path('migrations'),
+            __DIR__.'/../resources/js/useAbTest.js' => resource_path('js/composables/useAbTest.js'),
         ]);
 
         $this->registerBladeDirectives();

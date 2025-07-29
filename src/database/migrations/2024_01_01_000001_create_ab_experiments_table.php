@@ -8,6 +8,7 @@ return new class extends Migration
 {
     public function up()
     {
+        // Create experiments table
         Schema::create('ab_experiments', function (Blueprint $table) {
             $table->id();
             $table->string('name')->unique();
@@ -29,10 +30,45 @@ return new class extends Migration
             $table->index(['name', 'is_active']);
             $table->index(['status', 'is_active']);
         });
+
+        // Create user assignments table
+        Schema::create('ab_user_assignments', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('experiment_id');
+            $table->string('user_id'); // Can be session ID, user ID, etc.
+            $table->string('variant');
+            $table->timestamp('assigned_at')->useCurrent();
+            $table->timestamps();
+
+            $table->foreign('experiment_id')->references('id')->on('ab_experiments')->onDelete('cascade');
+            $table->unique(['experiment_id', 'user_id']);
+            $table->index(['experiment_id', 'variant']);
+            $table->index('user_id');
+        });
+
+        // Create events table
+        Schema::create('ab_events', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('experiment_id');
+            $table->string('user_id');
+            $table->string('variant');
+            $table->string('event_name')->default('conversion');
+            $table->json('properties')->nullable();
+            $table->timestamp('event_time')->useCurrent();
+            $table->timestamps();
+
+            $table->foreign('experiment_id')->references('id')->on('ab_experiments')->onDelete('cascade');
+            $table->index(['experiment_id', 'variant', 'event_name']);
+            $table->index(['experiment_id', 'user_id']);
+            $table->index('event_time');
+        });
+
     }
 
     public function down()
     {
+        Schema::dropIfExists('ab_events');
+        Schema::dropIfExists('ab_user_assignments');
         Schema::dropIfExists('ab_experiments');
     }
 };

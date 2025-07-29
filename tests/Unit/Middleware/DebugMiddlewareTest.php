@@ -166,15 +166,15 @@ class DebugMiddlewareTest extends TestCase
         $content = $result->getContent();
         
         // Should contain the original content
-        $this->assertStringContains('<h1>Test Page</h1>', $content);
+        $this->assertStringContainsString('<h1>Test Page</h1>', $content);
         
         // Should contain injected JavaScript
-        $this->assertStringContains('window.abtrack', $content);
-        $this->assertStringContains('window.abvariant', $content);
+        $this->assertStringContainsString('window.abtrack', $content);
+        $this->assertStringContainsString('window.abvariant', $content);
         
         // Should contain debug panel
-        $this->assertStringContains('ab-test-debug', $content);
-        $this->assertStringContains('test_experiment', $content);
+        $this->assertStringContainsString('ab-test-debug', $content);
+        $this->assertStringContainsString('test_experiment', $content);
     }
 
     /** @test */
@@ -256,7 +256,7 @@ class DebugMiddlewareTest extends TestCase
         $content = $result->getContent();
         
         // Should contain CSRF token in the JavaScript
-        $this->assertStringContains("'X-CSRF-TOKEN':", $content);
+        $this->assertStringContainsString("'X-CSRF-TOKEN':", $content);
     }
 
     /** @test */
