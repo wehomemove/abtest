@@ -13,4 +13,6 @@ Route::prefix('api/ab-testing')
         Route::post('/register-debug', [ApiController::class, 'registerDebugExperiment'])->name('register-debug');
         Route::get('/results/{experiment}', [ApiController::class, 'getResults'])->name('results');
         Route::get('/experiments/{experiment}/stats', [ApiController::class, 'getExperimentStats'])->name('experiment.stats');
+        Route::get('/experiments/{experiment}/recent-activity', [ApiController::class, 'getRecentActivity'])->name('experiment.activity');
+        Route::get('/experiments/{experiment}/chart-data', [ApiController::class, 'getChartData'])->name('experiment.chart-data');
     });

@@ -196,6 +196,18 @@ class DashboardController extends Controller
                 return $properties['count'] ?? 1;
             });
 
+        // Today's stats (from midnight today)
+        $todayStart = now()->startOfDay();
+        $todayAssignments = UserAssignment::where('experiment_id', $experiment->id)
+            ->where('created_at', '>=', $todayStart)
+            ->count();
+            
+        $todayConversions = Event::where('experiment_id', $experiment->id)
+            ->where('event_name', 'conversion')
+            ->where('created_at', '>=', $todayStart)
+            ->distinct('user_id')
+            ->count();
+
         return [
             'variants' => $stats,
             'total_assignments' => array_sum($assignments),
@@ -204,6 +216,8 @@ class DashboardController extends Controller
             'total_interactions' => $totalInteractions,
             'unique_users' => $userEvents->count(),
             'user_events' => $userEvents,
+            'today_assignments' => $todayAssignments,
+            'today_conversions' => $todayConversions,
         ];
     }
 }
