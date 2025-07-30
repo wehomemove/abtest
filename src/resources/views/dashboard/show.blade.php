@@ -259,8 +259,11 @@ This compares conversion rates between Control vs Test groups to determine if th
     </div>
 </div>
 
-<!-- User Activity - Optimized for Large Datasets -->
-<div class="bg-white shadow-xl rounded border border-gray-100">
+<!-- Live Activity Feed -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+    <div class="lg:col-span-2">
+        <!-- User Activity - Optimized for Large Datasets -->
+        <div class="bg-white shadow-xl rounded border border-gray-100">
     <div class="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
         <div class="flex items-center justify-between">
             <div>
@@ -364,6 +367,31 @@ This compares conversion rates between Control vs Test groups to determine if th
             @endif
         </div>
     </div>
+    </div>
+    
+    <!-- Live Activity Feed -->
+    <div class="bg-white rounded shadow-lg hover:shadow-xl transition-all duration-300">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+                    Live Activity
+                    <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help" 
+                       title="Real-time feed of user actions and conversions"></i>
+                </h3>
+                <div class="flex items-center text-green-500">
+                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
+                    <span class="text-xs font-medium">LIVE</span>
+                </div>
+            </div>
+        </div>
+        <div class="p-6">
+            <div class="space-y-4 max-h-96 overflow-y-auto">
+                <div id="live-activity-feed" class="space-y-3">
+                    <!-- Real activity will load here via JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -378,6 +406,7 @@ let experimentData = {
 function startRealTimeUpdates() {
     setInterval(async () => {
         await fetchLatestStats();
+        await fetchRecentActivity();
         updateLiveIndicators();
     }, 10000); // Update every 10 seconds for real data
 }
@@ -424,10 +453,67 @@ function updateLiveIndicators() {
     }
 }
 
+async function fetchRecentActivity() {
+    try {
+        const response = await fetch(`/api/ab-testing/experiments/${experimentData.id}/recent-activity`);
+        if (response.ok) {
+            const activities = await response.json();
+            updateActivityFeed(activities);
+        }
+    } catch (error) {
+        console.error('Error fetching recent activity:', error);
+    }
+}
+
+function updateActivityFeed(activities) {
+    const feed = document.getElementById('live-activity-feed');
+    if (!feed) return;
+    
+    feed.innerHTML = ''; // Clear existing
+
+    activities.forEach(activity => {
+        addToActivityFeed(activity.message, activity.color, activity.time, false);
+    });
+}
+
+function addToActivityFeed(message, colorClass, timeAgo = 'Just now', animate = true) {
+    const feed = document.getElementById('live-activity-feed');
+    if (!feed) return;
+
+    const activityItem = document.createElement('div');
+    activityItem.className = `flex items-start space-x-3 p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors duration-200 ${animate ? 'animate-pulse' : ''}`;
+    activityItem.innerHTML = `
+        <div class="flex-shrink-0">
+            <div class="w-8 h-8 ${colorClass} rounded-full flex items-center justify-center text-white text-xs font-medium">
+                <i class="fas fa-check"></i>
+            </div>
+        </div>
+        <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-900">${message}</p>
+            <p class="text-xs text-gray-500">${timeAgo}</p>
+        </div>
+    `;
+
+    // Add to top of feed
+    feed.insertBefore(activityItem, feed.firstChild);
+
+    // Remove animation after 2 seconds
+    if (animate) {
+        setTimeout(() => {
+            activityItem.classList.remove('animate-pulse');
+        }, 2000);
+    }
+
+    // Keep only last 15 items
+    while (feed.children.length > 15) {
+        feed.removeChild(feed.lastChild);
+    }
+}
 
 // Start real-time updates when page loads
 document.addEventListener('DOMContentLoaded', function() {
     startRealTimeUpdates();
+    fetchRecentActivity(); // Load initial activity data
 });
 
 // User Activity Functions
