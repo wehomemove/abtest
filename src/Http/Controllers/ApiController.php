@@ -170,4 +170,77 @@ class ApiController extends Controller
             ], 500);
         }
     }
+
+    public function getExperimentStats(Request $request, $experimentId)
+    {
+        try {
+            $experiment = Experiment::findOrFail($experimentId);
+            
+            // Get variant statistics
+            $variants = [];
+            $controlRate = 0;
+            
+            foreach ($experiment->variants as $variant => $weight) {
+                $assignments = $experiment->assignments()->where('variant', $variant)->count();
+                $conversions = $experiment->events()
+                    ->where('variant', $variant)
+                    ->where('event_name', 'conversion')
+                    ->distinct('user_id')
+                    ->count();
+                
+                $rate = $assignments > 0 ? round(($conversions / $assignments) * 100, 2) : 0;
+                
+                if ($variant === 'control') {
+                    $controlRate = $rate;
+                }
+                
+                $variants[$variant] = [
+                    'participants' => $assignments,
+                    'conversions' => $conversions,
+                    'rate' => $rate,
+                    'lift' => 0, // Will calculate after getting control rate
+                    'color' => $this->getVariantColor($variant)
+                ];
+            }
+            
+            // Calculate lift for non-control variants
+            foreach ($variants as $variant => &$data) {
+                if ($variant !== 'control' && $controlRate > 0) {
+                    $data['lift'] = round((($data['rate'] - $controlRate) / $controlRate) * 100, 1);
+                }
+            }
+            
+            $totalAssignments = array_sum(array_column($variants, 'participants'));
+            $totalConversions = array_sum(array_column($variants, 'conversions'));
+            
+            return response()->json([
+                'success' => true,
+                'total_assignments' => $totalAssignments,
+                'total_conversions' => $totalConversions,
+                'variants' => $variants,
+                'updated_at' => now()->toISOString()
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('A/B Test stats error: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get experiment stats'
+            ], 500);
+        }
+    }
+    
+    private function getVariantColor($variant)
+    {
+        $colors = [
+            'control' => '#3B82F6',
+            'variant_a' => '#10B981',
+            'variant_b' => '#F59E0B',
+            'new_design' => '#8B5CF6',
+            'default' => '#6B7280'
+        ];
+        
+        return $colors[$variant] ?? $colors['default'];
+    }
 }

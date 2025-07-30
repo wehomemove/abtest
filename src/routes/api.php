@@ -12,4 +12,5 @@ Route::prefix('api/ab-testing')
         Route::get('/variant/{experiment}', [ApiController::class, 'getVariantByExperiment'])->name('variant.get');
         Route::post('/register-debug', [ApiController::class, 'registerDebugExperiment'])->name('register-debug');
         Route::get('/results/{experiment}', [ApiController::class, 'getResults'])->name('results');
+        Route::get('/experiments/{experiment}/stats', [ApiController::class, 'getExperimentStats'])->name('experiment.stats');
     });

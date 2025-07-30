@@ -24,7 +24,7 @@ class DashboardController extends Controller
     {
         $stats = $this->getExperimentStats($experiment);
         
-        return view('ab-testing::dashboard.show', compact('experiment', 'stats'));
+        return view('ab-testing::dashboard.show-realtime', compact('experiment', 'stats'));
     }
 
     public function create()
