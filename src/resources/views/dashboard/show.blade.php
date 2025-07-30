@@ -12,7 +12,7 @@
             <p class="text-gray-100 text-lg">{{ $experiment->description }}</p>
             <div class="flex items-center mt-3 space-x-4">
                 <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ $experiment->is_active ? 'bg-red-500 text-white' : 'bg-red-500 text-white' }}">
-                    <div class="w-2 h-2 rounded-full mr-2 {{ $experiment->is_active ? 'bg-red-300' : 'bg-red-300' }}"></div>
+                    <div class="w-2 h-2 rounded-full mr-2 {{ $experiment->is_active ? 'bg-green-300' : 'bg-red-300' }}"></div>
                     {{ $experiment->is_active ? 'Active' : 'Paused' }}
                 </span>
                 <span class="text-gray-100">
@@ -103,7 +103,7 @@
                 {{ $stats['total_assignments'] > 0 ? number_format(($stats['total_conversions'] / $stats['total_assignments']) * 100, 2) : 0 }}%
             </div>
             <div class="flex items-center">
-                <span class="text-xs font-medium text-red-500" id="rate-trend">
+                <span class="text-xs font-medium text-green-500" id="rate-trend">
                     <i class="fas fa-arrow-up"></i>
                     <span id="rate-change">2.3</span>% vs yesterday
                 </span>
@@ -132,7 +132,7 @@ This compares conversion rates between Control vs Test groups to determine if th
 
 ✅ Confidence Levels:
 • 95%+ = Statistically Significant (< 5% chance it's random)
-• 90-94% = Approaching Significance 
+• 90-94% = Approaching Significance
 • 80-89% = Trending Towards Significance
 • < 80% = Not Yet Significant (need more data)
 
@@ -209,27 +209,6 @@ This compares conversion rates between Control vs Test groups to determine if th
 
 <!-- Charts Section -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-    <!-- Conversion Rate Over Time -->
-    <div class="bg-white rounded shadow-lg p-6 hover:shadow-xl transition-all duration-300">
-        <div class="flex items-center justify-between mb-6">
-            <h3 class="text-lg font-semibold text-gray-900 flex items-center">
-                Conversion Rate Trends
-                <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
-                   title="Shows how conversion rates change over time for each variant"></i>
-            </h3>
-            <div class="flex space-x-2">
-                <button onclick="updateChartPeriod('24h')" id="btn-24h"
-                        class="px-3 py-1 rounded text-sm font-medium transition-all duration-200 hover:scale-105 bg-red-500 text-white">24h</button>
-                <button onclick="updateChartPeriod('7d')" id="btn-7d"
-                        class="px-3 py-1 rounded text-sm font-medium transition-all duration-200 hover:scale-105 bg-gray-200 text-gray-700 hover:bg-gray-300">7d</button>
-                <button onclick="updateChartPeriod('30d')" id="btn-30d"
-                        class="px-3 py-1 rounded text-sm font-medium transition-all duration-200 hover:scale-105 bg-gray-200 text-gray-700 hover:bg-gray-300">30d</button>
-            </div>
-        </div>
-        <div class="relative h-64">
-            <canvas id="conversionChart"></canvas>
-        </div>
-    </div>
 
     <!-- Variant Performance -->
     <div class="bg-white rounded shadow-lg p-6 hover:shadow-xl transition-all duration-300">
@@ -280,124 +259,6 @@ This compares conversion rates between Control vs Test groups to determine if th
     </div>
 </div>
 
-<!-- Real-time Activity Feed -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-    <!-- Variant Details Table -->
-    <div class="lg:col-span-2 bg-white rounded shadow-lg hover:shadow-xl transition-all duration-300">
-        <div class="px-6 py-4 border-b border-gray-200">
-            <h3 class="text-lg font-semibold text-gray-900 flex items-center">
-                Variant Performance Details
-                <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
-                   title="Detailed breakdown of each variant's performance metrics"></i>
-            </h3>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Variant</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Participants</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Conversions</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rate</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lift</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                    @php
-                        $controlRate = $stats['variants']['control']['conversion_rate'] ?? 0;
-                        $colors = ['control' => '#6B7280', 'variant_a' => '#DC2626', 'variant_b' => '#10B981', 'new_design' => '#F59E0B'];
-                    @endphp
-                    @foreach($stats['variants'] as $variant => $data)
-                        <tr class="hover:bg-gray-50 transition-colors duration-200">
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="flex items-center">
-                                    <div class="w-3 h-3 rounded-full mr-3" style="background-color: {{ $colors[$variant] ?? '#6B7280' }}"></div>
-                                    <span class="text-sm font-medium text-gray-900 capitalize">{{ str_replace('_', ' ', $variant) }}</span>
-                                    @if($variant === 'control')
-                                        <span class="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">Control</span>
-                                    @endif
-                                </div>
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ number_format($data['assigned']) }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ number_format($data['converted']) }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm font-medium {{ $data['conversion_rate'] > $controlRate ? 'text-green-600' : ($data['conversion_rate'] < $controlRate ? 'text-red-600' : 'text-gray-900') }}">
-                                    {{ $data['conversion_rate'] }}%
-                                </span>
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                @if($variant !== 'control' && $controlRate > 0)
-                                    @php
-                                        $lift = (($data['conversion_rate'] - $controlRate) / $controlRate) * 100;
-                                    @endphp
-                                    <span class="text-sm font-medium {{ $lift > 0 ? 'text-green-600' : 'text-red-600' }}">
-                                        {{ $lift > 0 ? '+' : '' }}{{ number_format($lift, 1) }}%
-                                    </span>
-                                @else
-                                    <span class="text-sm text-gray-500">Baseline</span>
-                                @endif
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Live Activity Feed -->
-    <div class="bg-white rounded shadow-lg hover:shadow-xl transition-all duration-300">
-        <div class="px-6 py-4 border-b border-gray-200">
-            <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-gray-900 flex items-center">
-                    Live Activity
-                    <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
-                       title="Real-time feed of user actions and conversions"></i>
-                </h3>
-                <div class="flex items-center text-green-500">
-                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
-                    <span class="text-xs font-medium">LIVE</span>
-                </div>
-            </div>
-        </div>
-        <div class="p-6">
-            <div class="space-y-4 max-h-96 overflow-y-auto">
-                <div id="live-activity-feed" class="space-y-3">
-                    <div class="flex items-start space-x-3 p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors duration-200">
-                        <div class="flex-shrink-0">
-                            <div class="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-medium">
-                                <i class="fas fa-check"></i>
-                            </div>
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <!-- Real activity will load here via JavaScript -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Summary Stats -->
-<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-    <div class="bg-white shadow rounded p-6">
-        <div class="text-2xl font-bold text-red-600">{{ $stats['unique_users'] }}</div>
-        <div class="text-sm text-gray-600">Unique Users</div>
-    </div>
-    <div class="bg-white shadow rounded p-6">
-        <div class="text-2xl font-bold text-red-600">{{ number_format($stats['total_interactions']) }}</div>
-        <div class="text-sm text-gray-600">Total Interactions</div>
-    </div>
-    <div class="bg-white shadow rounded p-6">
-        <div class="text-2xl font-bold text-red-600">{{ $stats['total_events'] }}</div>
-        <div class="text-sm text-gray-600">Unique Events</div>
-    </div>
-    <div class="bg-white shadow rounded p-6">
-        <div class="text-2xl font-bold text-red-600">{{ $stats['total_assignments'] }}</div>
-        <div class="text-sm text-gray-600">Total Assignments</div>
-    </div>
-</div>
-
 <!-- User Activity - Optimized for Large Datasets -->
 <div class="bg-white shadow-xl rounded border border-gray-100">
     <div class="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
@@ -413,9 +274,6 @@ This compares conversion rates between Control vs Test groups to determine if th
                     <option value="high-activity">High Activity</option>
                     <option value="recent">Recent Activity</option>
                 </select>
-                <button onclick="toggleUserActivityView()" class="px-4 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700 transition-colors">
-                    <span id="view-toggle-text">Detailed View</span>
-                </button>
             </div>
         </div>
     </div>
@@ -510,154 +368,16 @@ This compares conversion rates between Control vs Test groups to determine if th
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-let conversionChart = null;
-let currentPeriod = '24h';
 let statsData = @json($stats);
 let experimentData = {
     isActive: {{ $experiment->is_active ? 'true' : 'false' }},
     id: {{ $experiment->id }}
 };
 
-async function initChart() {
-    const ctx = document.getElementById('conversionChart').getContext('2d');
-
-    // Destroy existing chart if it exists
-    if (conversionChart) {
-        conversionChart.destroy();
-    }
-
-    const variants = @json($stats['variants']);
-    const variantNames = Object.keys(variants);
-    const colors = ['#6B7280', '#DC2626', '#10B981', '#F59E0B']; // Gray for control, red for primary variant, green for winning, amber for others
-
-    conversionChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: generateTimeLabels(currentPeriod),
-            datasets: variantNames.map((variant, index) => ({
-                label: variant.charAt(0).toUpperCase() + variant.slice(1).replace('_', ' '),
-                data: Array(generateTimeLabels(currentPeriod).length).fill(0),
-                borderColor: colors[index] || '#6B7280',
-                backgroundColor: (colors[index] || '#6B7280') + '20',
-                tension: 0.4,
-                fill: false,
-                pointRadius: 4,
-                pointHoverRadius: 6
-            }))
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: {
-                intersect: false,
-                mode: 'index'
-            },
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        usePointStyle: true,
-                        padding: 15
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    grid: {
-                        display: false
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    max: 25,
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.05)'
-                    },
-                    ticks: {
-                        callback: function(value) {
-                            return value + '%';
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-function generateTimeLabels(period) {
-    const labels = [];
-    const now = new Date();
-
-    if (period === '24h') {
-        for (let i = 23; i >= 0; i--) {
-            const time = new Date(now.getTime() - (i * 60 * 60 * 1000));
-            labels.push(time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
-        }
-    } else if (period === '7d') {
-        for (let i = 6; i >= 0; i--) {
-            const date = new Date(now.getTime() - (i * 24 * 60 * 60 * 1000));
-            labels.push(date.toLocaleDateString([], {month: 'short', day: 'numeric'}));
-        }
-    } else if (period === '30d') {
-        for (let i = 29; i >= 0; i -= 3) {
-            const date = new Date(now.getTime() - (i * 24 * 60 * 60 * 1000));
-            labels.push(date.toLocaleDateString([], {month: 'short', day: 'numeric'}));
-        }
-    }
-    return labels;
-}
-
-async function generateRealData(period) {
-    try {
-        const response = await fetch(`/api/ab-testing/experiments/${experimentData.id}/chart-data?period=${period}`);
-        if (response.ok) {
-            const data = await response.json();
-            return data.values || [];
-        }
-    } catch (error) {
-        console.error('Error fetching chart data:', error);
-    }
-
-    // Fallback to empty data if API fails
-    let length = period === '24h' ? 24 : period === '7d' ? 7 : 10;
-    return Array(length).fill(0);
-}
-
-async function updateChartPeriod(period) {
-    currentPeriod = period;
-
-    // Update button styles
-    const buttons = ['24h', '7d', '30d'];
-    buttons.forEach(p => {
-        const btn = document.getElementById('btn-' + p);
-        if (p === period) {
-            btn.className = 'px-3 py-1 rounded-md text-sm font-medium bg-red-500 text-white';
-        } else {
-            btn.className = 'px-3 py-1 rounded-md text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300';
-        }
-    });
-
-    // Update chart data with real data
-    if (conversionChart) {
-        conversionChart.data.labels = generateTimeLabels(period);
-
-        // Update each dataset with real data
-        const realData = await generateRealData(period);
-        for (let i = 0; i < conversionChart.data.datasets.length; i++) {
-            const dataset = conversionChart.data.datasets[i];
-            dataset.data = realData;
-        }
-
-        conversionChart.update();
-    }
-}
-
 // Real-time updates
 function startRealTimeUpdates() {
     setInterval(async () => {
         await fetchLatestStats();
-        await fetchRecentActivity();
-        updateCharts();
         updateLiveIndicators();
     }, 10000); // Update every 10 seconds for real data
 }
@@ -675,110 +395,39 @@ async function fetchLatestStats() {
 }
 
 function updateLiveIndicators() {
-    if (!statsData || !statsData.variants) return;
-
-    // Calculate real trends from actual data
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    // These would come from real API data with time filtering
-    // For now, we'll update the main stats display with real data
-    const totalAssignments = statsData.total_assignments || 0;
-    const totalConversions = statsData.total_conversions || 0;
-    const currentRate = totalAssignments > 0 ? ((totalConversions / totalAssignments) * 100).toFixed(2) : 0;
-
-    // Update main numbers with real data
-    document.querySelector('.text-2xl.font-bold.text-gray-900').textContent = totalAssignments.toLocaleString();
-    document.querySelectorAll('.text-2xl.font-bold.text-gray-900')[1].textContent = totalConversions.toLocaleString();
-    document.querySelectorAll('.text-2xl.font-bold.text-gray-900')[2].textContent = currentRate + '%';
-}
-
-async function fetchRecentActivity() {
-    try {
-        const response = await fetch(`/api/ab-testing/experiments/${experimentData.id}/recent-activity`);
-        if (response.ok) {
-            const activities = await response.json();
-            updateActivityFeed(activities);
+    if (!statsData) return;
+    
+    // Update statistical significance if available
+    if (statsData.statistical_significance) {
+        const significance = statsData.statistical_significance;
+        
+        // Update significance percentage
+        const significanceElements = document.querySelectorAll('.text-2xl.font-bold');
+        const significanceElement = significanceElements[significanceElements.length - 1]; // Last one should be significance
+        
+        if (significanceElement && significanceElement.textContent.includes('%')) {
+            significanceElement.textContent = significance.percentage + '%';
+            
+            // Update color based on confidence level
+            significanceElement.className = `text-2xl font-bold mb-1 ${
+                significance.confidence_level === 'high' ? 'text-green-600' : 
+                significance.confidence_level === 'medium' ? 'text-yellow-600' : 
+                'text-red-600'
+            }`;
         }
-    } catch (error) {
-        console.error('Error fetching recent activity:', error);
+        
+        // Update message
+        const messageElement = document.getElementById('significance-message');
+        if (messageElement) {
+            messageElement.textContent = significance.message;
+        }
     }
 }
 
-function updateActivityFeed(activities) {
-    const feed = document.getElementById('live-activity-feed');
-    feed.innerHTML = ''; // Clear existing
-
-    activities.forEach(activity => {
-        addToActivityFeed(activity.message, activity.color, activity.time, false);
-    });
-}
-
-function addToActivityFeed(message, colorClass, timeAgo = 'Just now', animate = true) {
-    const feed = document.getElementById('live-activity-feed');
-
-    const activityItem = document.createElement('div');
-    activityItem.className = `flex items-start space-x-3 text-sm text-gray-600 ${animate ? 'animate-pulse' : ''}`;
-    activityItem.innerHTML = `
-        <div class="w-2 h-2 ${colorClass} rounded-full mt-2"></div>
-        <div>
-            <span class="font-medium">${message}</span>
-            <div class="text-xs text-gray-400">${timeAgo}</div>
-        </div>
-    `;
-
-    // Add to top of feed
-    feed.insertBefore(activityItem, feed.firstChild);
-
-    // Remove animation after 2 seconds
-    if (animate) {
-        setTimeout(() => {
-            activityItem.classList.remove('animate-pulse');
-        }, 2000);
-    }
-
-    // Keep only last 15 items
-    while (feed.children.length > 15) {
-        feed.removeChild(feed.lastChild);
-    }
-}
-
-function showLiveNotification(message) {
-    const notification = document.createElement('div');
-    notification.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg transform translate-x-full transition-transform duration-300 z-50';
-    notification.innerHTML = `
-        <div class="flex items-center space-x-2">
-            <div class="w-2 h-2 bg-green-300 rounded-full animate-pulse"></div>
-            <span class="text-sm font-medium">${message}</span>
-        </div>
-    `;
-
-    document.body.appendChild(notification);
-
-    // Slide in
-    setTimeout(() => {
-        notification.classList.remove('translate-x-full');
-    }, 100);
-
-    // Slide out and remove
-    setTimeout(() => {
-        notification.classList.add('translate-x-full');
-        setTimeout(() => {
-            document.body.removeChild(notification);
-        }, 300);
-    }, 3000);
-}
 
 // Start real-time updates when page loads
-document.addEventListener('DOMContentLoaded', async function() {
-    await initChart();
+document.addEventListener('DOMContentLoaded', function() {
     startRealTimeUpdates();
-    fetchRecentActivity(); // Load initial activity
-
-    // Load real chart data after initialization
-    setTimeout(async () => {
-        await updateChartPeriod('24h');
-    }, 1000);
 });
 
 // User Activity Functions
@@ -817,17 +466,6 @@ function showUserDetails(index, userData) {
 function loadMoreUsers() {
     // Ajax call to load more users
     console.log('Loading more users...');
-}
-
-function toggleUserActivityView() {
-    const toggleText = document.getElementById('view-toggle-text');
-    if (toggleText.textContent === 'Detailed View') {
-        toggleText.textContent = 'Compact View';
-        // Switch to detailed view
-    } else {
-        toggleText.textContent = 'Detailed View';
-        // Switch to compact view
-    }
 }
 
 // Add event listener for filter
