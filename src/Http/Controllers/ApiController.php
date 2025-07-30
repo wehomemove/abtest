@@ -268,7 +268,7 @@ class ApiController extends Controller
             foreach ($recentAssignments as $assignment) {
                 $activities[] = [
                     'message' => "New user assigned to {$assignment->variant}",
-                    'color' => 'bg-green-500',
+                    'color' => 'bg-red-500',
                     'time' => $assignment->created_at->diffForHumans(),
                     'timestamp' => $assignment->created_at->timestamp
                 ];
@@ -369,12 +369,12 @@ class ApiController extends Controller
     private function getEventColor($eventName)
     {
         $colors = [
-            'conversion' => 'bg-blue-500',
-            'click' => 'bg-yellow-500',
-            'view' => 'bg-gray-500',
-            'submit' => 'bg-purple-500',
-            'signup' => 'bg-green-500',
-            'default' => 'bg-gray-400'
+            'conversion' => 'bg-red-500',
+            'click' => 'bg-red-600',
+            'view' => 'bg-red-400',
+            'submit' => 'bg-red-700',
+            'signup' => 'bg-red-500',
+            'default' => 'bg-red-400'
         ];
         
         return $colors[$eventName] ?? $colors['default'];
@@ -396,10 +396,10 @@ class ApiController extends Controller
     private function getVariantColor($variant)
     {
         $colors = [
-            'control' => '#3B82F6',
-            'variant_a' => '#10B981',
-            'variant_b' => '#F59E0B',
-            'new_design' => '#8B5CF6',
+            'control' => '#DC2626',
+            'variant_a' => '#B91C1C',
+            'variant_b' => '#991B1B',
+            'new_design' => '#7F1D1D',
             'default' => '#6B7280'
         ];
         
