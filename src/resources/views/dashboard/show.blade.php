@@ -464,8 +464,25 @@ function updateActivityFeed(activities) {
     
     feed.innerHTML = ''; // Clear existing
 
+    // Since activities come from API in descending order (newest first),
+    // and we want newest first in the UI, append them directly
     activities.forEach(activity => {
-        addToActivityFeed(activity.message, activity.color, activity.time, false);
+        const activityItem = document.createElement('div');
+        activityItem.className = 'flex items-start space-x-3 p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors duration-200';
+        activityItem.innerHTML = `
+            <div class="flex-shrink-0">
+                <div class="w-8 h-8 ${activity.color} rounded-full flex items-center justify-center text-white text-xs font-medium">
+                    <i class="fas fa-check"></i>
+                </div>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-900">${activity.message}</p>
+                <p class="text-xs text-gray-500">${activity.time}</p>
+            </div>
+        `;
+        
+        // Append to end (since API data is already in correct order)
+        feed.appendChild(activityItem);
     });
 }
 
