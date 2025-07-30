@@ -257,6 +257,26 @@ This compares conversion rates between Control vs Test groups to determine if th
         });
         </script>
     </div>
+
+    <!-- Live Activity Feed -->
+    <div class="bg-white rounded shadow-lg p-6 hover:shadow-xl transition-all duration-300">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+                Live Activity
+                <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help" 
+                   title="Real-time feed of user actions and conversions"></i>
+            </h3>
+            <div class="flex items-center text-green-500">
+                <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
+                <span class="text-xs font-medium">LIVE</span>
+            </div>
+        </div>
+        <div class="space-y-4 max-h-80 overflow-y-auto">
+            <div id="live-activity-feed" class="space-y-3">
+                <!-- Real activity will load here via JavaScript -->
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- User Activity - Optimized for Large Datasets -->
@@ -365,29 +385,6 @@ This compares conversion rates between Control vs Test groups to determine if th
     </div>
 </div>
 
-<!-- Live Activity Feed -->
-<div class="bg-white rounded shadow-lg hover:shadow-xl transition-all duration-300 mb-8">
-        <div class="px-6 py-4 border-b border-gray-200">
-            <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-gray-900 flex items-center">
-                    Live Activity
-                    <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help" 
-                       title="Real-time feed of user actions and conversions"></i>
-                </h3>
-                <div class="flex items-center text-green-500">
-                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
-                    <span class="text-xs font-medium">LIVE</span>
-                </div>
-            </div>
-        </div>
-        <div class="p-6">
-            <div class="space-y-4 max-h-96 overflow-y-auto">
-                <div id="live-activity-feed" class="space-y-3">
-                    <!-- Real activity will load here via JavaScript -->
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
