@@ -274,12 +274,12 @@ class ApiController extends Controller
                 ];
             }
             
-            // Sort by timestamp (most recent first)
+            // Sort by timestamp (most recent first - descending)
             usort($activities, function($a, $b) {
                 return $b['timestamp'] - $a['timestamp'];
             });
             
-            // Return only the most recent 15
+            // Return only the most recent 15, newest first
             return response()->json(array_slice($activities, 0, 15));
             
         } catch (\Exception $e) {

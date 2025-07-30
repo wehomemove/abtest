@@ -5,17 +5,17 @@
 @section('content')
 <div class="w-full max-w-none px-4 sm:px-6 lg:px-8">
 <!-- Header Section -->
-<div class="mb-8 bg-gradient-to-r from-red-600 to-red-800 rounded shadow-xl p-6 text-white">
+<div class="mb-8 bg-gradient-to-r from-gray-700 to-gray-900 rounded shadow-xl p-6 text-white">
     <div class="flex items-center justify-between">
         <div>
             <h1 class="text-3xl font-bold mb-2">{{ $experiment->name }}</h1>
-            <p class="text-red-100 text-lg">{{ $experiment->description }}</p>
+            <p class="text-gray-100 text-lg">{{ $experiment->description }}</p>
             <div class="flex items-center mt-3 space-x-4">
                 <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ $experiment->is_active ? 'bg-red-500 text-white' : 'bg-red-500 text-white' }}">
                     <div class="w-2 h-2 rounded-full mr-2 {{ $experiment->is_active ? 'bg-red-300' : 'bg-red-300' }}"></div>
                     {{ $experiment->is_active ? 'Active' : 'Paused' }}
                 </span>
-                <span class="text-red-100">
+                <span class="text-gray-100">
                     <i class="fas fa-users mr-1"></i>
                     {{ number_format($stats['total_assignments']) }} participants
                 </span>
@@ -41,7 +41,7 @@
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
     <!-- Total Participants -->
     <div class="bg-white rounded shadow-lg p-6 relative overflow-hidden group hover:shadow-xl transition-all duration-300">
-        <div class="absolute top-0 right-0 w-20 h-20 bg-red-100 rounded-full -mr-10 -mt-10"></div>
+        <div class="absolute top-0 right-0 w-20 h-20 bg-blue-100 rounded-full -mr-10 -mt-10"></div>
         <div class="relative">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-medium text-gray-600 flex items-center">
@@ -49,13 +49,13 @@
                     <i class="fas fa-info-circle text-gray-400 ml-1 text-xs cursor-help" 
                        title="Total number of users assigned to this experiment"></i>
                 </h3>
-                <div class="text-red-500">
+                <div class="text-blue-500">
                     <i class="fas fa-users text-xl"></i>
                 </div>
             </div>
             <div class="text-3xl font-bold text-gray-900 mb-1">{{ number_format($stats['total_assignments']) }}</div>
             <div class="flex items-center">
-                <span class="text-xs text-red-500 font-medium" id="participants-trend">
+                <span class="text-xs text-blue-500 font-medium" id="participants-trend">
                     +<span id="recent-participants">{{ $stats['today_assignments'] ?? 0 }}</span> today
                 </span>
             </div>
@@ -64,7 +64,7 @@
 
     <!-- Total Conversions -->
     <div class="bg-white rounded shadow-lg p-6 relative overflow-hidden group hover:shadow-xl transition-all duration-300">
-        <div class="absolute top-0 right-0 w-20 h-20 bg-red-100 rounded-full -mr-10 -mt-10"></div>
+        <div class="absolute top-0 right-0 w-20 h-20 bg-green-100 rounded-full -mr-10 -mt-10"></div>
         <div class="relative">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-medium text-gray-600 flex items-center">
@@ -72,13 +72,13 @@
                     <i class="fas fa-info-circle text-gray-400 ml-1 text-xs cursor-help"
                        title="Users who completed the desired action (purchase, signup, etc.)"></i>
                 </h3>
-                <div class="text-red-500">
+                <div class="text-green-500">
                     <i class="fas fa-chart-line text-xl"></i>
                 </div>
             </div>
             <div class="text-3xl font-bold text-gray-900 mb-1">{{ number_format($stats['total_conversions']) }}</div>
             <div class="flex items-center">
-                <span class="text-xs text-red-500 font-medium" id="conversions-trend">
+                <span class="text-xs text-green-500 font-medium" id="conversions-trend">
                     +<span id="recent-conversions">{{ $stats['today_conversions'] ?? 0 }}</span> today
                 </span>
             </div>
@@ -87,7 +87,7 @@
 
     <!-- Conversion Rate -->
     <div class="bg-white rounded shadow-lg p-6 relative overflow-hidden group hover:shadow-xl transition-all duration-300">
-        <div class="absolute top-0 right-0 w-20 h-20 bg-red-100 rounded-full -mr-10 -mt-10"></div>
+        <div class="absolute top-0 right-0 w-20 h-20 bg-orange-100 rounded-full -mr-10 -mt-10"></div>
         <div class="relative">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-medium text-gray-600 flex items-center">
@@ -95,7 +95,7 @@
                     <i class="fas fa-info-circle text-gray-400 ml-1 text-xs cursor-help"
                        title="Percentage of participants who converted (Conversions ÷ Participants × 100)"></i>
                 </h3>
-                <div class="text-red-500">
+                <div class="text-orange-500">
                     <i class="fas fa-percentage text-xl"></i>
                 </div>
             </div>
@@ -113,7 +113,7 @@
 
     <!-- Statistical Significance -->
     <div class="bg-white rounded shadow-lg p-6 relative overflow-hidden group hover:shadow-xl transition-all duration-300">
-        <div class="absolute top-0 right-0 w-20 h-20 bg-red-100 rounded-full -mr-10 -mt-10"></div>
+        <div class="absolute top-0 right-0 w-20 h-20 bg-purple-100 rounded-full -mr-10 -mt-10"></div>
         <div class="relative">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-medium text-gray-600 flex items-center">
@@ -121,13 +121,13 @@
                     <i class="fas fa-info-circle text-gray-400 ml-1 text-xs cursor-help"
                        title="Statistical confidence that the results are real, not due to chance. 95%+ = Significant. Need more participants for reliable results."></i>
                 </h3>
-                <div class="text-red-500">
+                <div class="text-purple-500">
                     <i class="fas fa-flask text-xl"></i>
                 </div>
             </div>
-            <div class="text-2xl font-bold text-red-600 mb-1">85%</div>
+            <div class="text-2xl font-bold text-purple-600 mb-1">85%</div>
             <div class="flex items-center">
-                <span class="text-xs font-medium text-red-500" id="significance-status">
+                <span class="text-xs font-medium text-purple-500" id="significance-status">
                     <span id="significance-message">Needs More Data</span>
                 </span>
             </div>
@@ -222,6 +222,42 @@
         <div class="relative h-64">
             <canvas id="variantChart"></canvas>
         </div>
+        <script>
+        // Initialize variant performance chart
+        document.addEventListener('DOMContentLoaded', function() {
+            const variantCtx = document.getElementById('variantChart').getContext('2d');
+            const variants = @json($stats['variants']);
+            const variantNames = Object.keys(variants);
+            const conversionData = variantNames.map(variant => variants[variant].converted);
+            const variantColors = ['#6B7280', '#DC2626', '#10B981', '#F59E0B'];
+            
+            new Chart(variantCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: variantNames.map(v => v.charAt(0).toUpperCase() + v.slice(1).replace('_', ' ')),
+                    datasets: [{
+                        data: conversionData,
+                        backgroundColor: variantColors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15
+                            }
+                        }
+                    }
+                }
+            });
+        });
+        </script>
     </div>
 </div>
 
@@ -250,7 +286,7 @@
                 <tbody class="bg-white divide-y divide-gray-200">
                     @php
                         $controlRate = $stats['variants']['control']['conversion_rate'] ?? 0;
-                        $colors = ['control' => '#DC2626', 'variant_a' => '#B91C1C', 'variant_b' => '#991B1B', 'new_design' => '#7F1D1D'];
+                        $colors = ['control' => '#6B7280', 'variant_a' => '#DC2626', 'variant_b' => '#10B981', 'new_design' => '#F59E0B'];
                     @endphp
                     @foreach($stats['variants'] as $variant => $data)
                         <tr class="hover:bg-gray-50 transition-colors duration-200">
@@ -266,7 +302,7 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ number_format($data['assigned']) }}</td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ number_format($data['converted']) }}</td>
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm font-medium {{ $data['conversion_rate'] > $controlRate ? 'text-red-600' : ($data['conversion_rate'] < $controlRate ? 'text-red-600' : 'text-gray-900') }}">
+                                <span class="text-sm font-medium {{ $data['conversion_rate'] > $controlRate ? 'text-green-600' : ($data['conversion_rate'] < $controlRate ? 'text-red-600' : 'text-gray-900') }}">
                                     {{ $data['conversion_rate'] }}%
                                 </span>
                             </td>
@@ -275,7 +311,7 @@
                                     @php
                                         $lift = (($data['conversion_rate'] - $controlRate) / $controlRate) * 100;
                                     @endphp
-                                    <span class="text-sm font-medium {{ $lift > 0 ? 'text-red-600' : 'text-red-600' }}">
+                                    <span class="text-sm font-medium {{ $lift > 0 ? 'text-green-600' : 'text-red-600' }}">
                                         {{ $lift > 0 ? '+' : '' }}{{ number_format($lift, 1) }}%
                                     </span>
                                 @else
@@ -298,8 +334,8 @@
                     <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help" 
                        title="Real-time feed of user actions and conversions"></i>
                 </h3>
-                <div class="flex items-center text-red-500">
-                    <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-2"></div>
+                <div class="flex items-center text-green-500">
+                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
                     <span class="text-xs font-medium">LIVE</span>
                 </div>
             </div>
@@ -358,7 +394,7 @@
                     <option value="high-activity">High Activity</option>
                     <option value="recent">Recent Activity</option>
                 </select>
-                <button onclick="toggleUserActivityView()" class="px-4 py-2 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors">
+                <button onclick="toggleUserActivityView()" class="px-4 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700 transition-colors">
                     <span id="view-toggle-text">Detailed View</span>
                 </button>
             </div>
@@ -368,21 +404,21 @@
     <!-- Summary Cards -->
     <div class="p-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div class="bg-red-50 rounded p-4 border border-red-100">
-                <div class="text-2xl font-bold text-red-600">{{ $stats['unique_users'] }}</div>
-                <div class="text-sm text-red-700 font-medium">Total Users</div>
+            <div class="bg-blue-50 rounded p-4 border border-blue-100">
+                <div class="text-2xl font-bold text-blue-600">{{ $stats['unique_users'] }}</div>
+                <div class="text-sm text-blue-700 font-medium">Total Users</div>
             </div>
-            <div class="bg-red-50 rounded p-4 border border-red-100">
-                <div class="text-2xl font-bold text-red-600">{{ $stats['user_events']->where(function($user) { return collect($user['events'])->has('conversion'); })->count() }}</div>
-                <div class="text-sm text-red-700 font-medium">Converted Users</div>
+            <div class="bg-green-50 rounded p-4 border border-green-100">
+                <div class="text-2xl font-bold text-green-600">{{ $stats['user_events']->where(function($user) { return collect($user['events'])->has('conversion'); })->count() }}</div>
+                <div class="text-sm text-green-700 font-medium">Converted Users</div>
             </div>
-            <div class="bg-red-50 rounded p-4 border border-red-100">
-                <div class="text-2xl font-bold text-red-600">{{ number_format($stats['total_interactions']) }}</div>
-                <div class="text-sm text-red-700 font-medium">Total Interactions</div>
+            <div class="bg-purple-50 rounded p-4 border border-purple-100">
+                <div class="text-2xl font-bold text-purple-600">{{ number_format($stats['total_interactions']) }}</div>
+                <div class="text-sm text-purple-700 font-medium">Total Interactions</div>
             </div>
-            <div class="bg-red-50 rounded p-4 border border-red-100">
-                <div class="text-2xl font-bold text-red-600">{{ number_format($stats['user_events']->avg('total_interactions'), 1) }}</div>
-                <div class="text-sm text-red-700 font-medium">Avg per User</div>
+            <div class="bg-orange-50 rounded p-4 border border-orange-100">
+                <div class="text-2xl font-bold text-orange-600">{{ number_format($stats['user_events']->avg('total_interactions'), 1) }}</div>
+                <div class="text-sm text-orange-700 font-medium">Avg per User</div>
             </div>
         </div>
         
@@ -399,17 +435,17 @@
                         <div class="p-4">
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center space-x-3">
-                                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center text-white font-bold text-sm">
+                                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white font-bold text-sm">
                                         {{ strtoupper(substr($userData['user_id'], 0, 2)) }}
                                     </div>
                                     <div>
                                         <div class="flex items-center space-x-2">
                                             <span class="font-semibold text-gray-900">User {{ substr($userData['user_id'], 0, 8) }}...</span>
-                                            <span class="px-2 py-1 bg-{{ $userData['variant'] === 'control' ? 'blue' : 'green' }}-100 text-{{ $userData['variant'] === 'control' ? 'blue' : 'green' }}-800 rounded-full text-xs font-medium">
+                                            <span class="px-2 py-1 bg-{{ $userData['variant'] === 'control' ? 'gray' : 'blue' }}-100 text-{{ $userData['variant'] === 'control' ? 'gray' : 'blue' }}-800 rounded-full text-xs font-medium">
                                                 {{ $userData['variant'] }}
                                             </span>
                                             @if(collect($userData['events'])->has('conversion'))
-                                                <span class="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
+                                                <span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
                                                     ✓ Converted
                                                 </span>
                                             @endif
@@ -473,7 +509,7 @@ async function initChart() {
     
     const variants = @json($stats['variants']);
     const variantNames = Object.keys(variants);
-    const colors = ['#DC2626', '#B91C1C', '#991B1B', '#7F1D1D'];
+    const colors = ['#6B7280', '#DC2626', '#10B981', '#F59E0B']; // Gray for control, red for primary variant, green for winning, amber for others
     
     conversionChart = new Chart(ctx, {
         type: 'line',
@@ -799,31 +835,5 @@ function toggleAccordion(id) {
 
 <!-- FontAwesome for icons -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-
-<div class="mt-8 bg-gray-50 rounded p-6">
-    <h3 class="text-lg font-medium text-gray-900 mb-4">🛠️ Implementation Guide</h3>
-    <div class="space-y-4">
-        <div>
-            <h4 class="text-sm font-medium text-gray-700 mb-2">🖥️ Server-Side (PHP/Laravel):</h4>
-            <pre class="bg-gray-800 text-red-400 p-4 rounded text-sm overflow-x-auto"><code>{{-- Check variant --}}
-@variant("{{ $experiment->name }}", 'variant_b')
-    &lt;div&gt;New design&lt;/div&gt;
-@else
-    &lt;div&gt;Original design&lt;/div&gt;
-@endvariant
-
-{{-- Track conversion --}}
-@abtrack('{{ $experiment->name }}', null, 'conversion')</code></pre>
-        </div>
-
-        <div>
-            <h4 class="text-sm font-medium text-gray-700 mb-2">🌐 JavaScript/Vue Usage:</h4>
-            <pre class="bg-gray-800 text-red-400 p-4 rounded text-sm overflow-x-auto"><code>use Homemove\AbTesting\Facades\AbTest;
-
-$variant = AbTest::variant('{{ $experiment->name }}');
-AbTest::track('{{ $experiment->name }}', null, 'conversion');</code></pre>
-        </div>
-    </div>
-</div>
 </div>
 @endsection
