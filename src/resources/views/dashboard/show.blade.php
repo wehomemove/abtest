@@ -259,12 +259,9 @@ This compares conversion rates between Control vs Test groups to determine if th
     </div>
 </div>
 
-<!-- Real-time Activity Feed -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-    <div class="lg:col-span-2">
-        <!-- User Activity - Optimized for Large Datasets -->
-        <div class="bg-white shadow-xl rounded border border-gray-100">
-            <div class="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+<!-- User Activity - Optimized for Large Datasets -->
+<div class="bg-white shadow-xl rounded border border-gray-100 mb-8">
+    <div class="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
         <div class="flex items-center justify-between">
             <div>
                 <h3 class="text-lg font-semibold text-gray-900">User Activity Analytics</h3>
@@ -365,12 +362,11 @@ This compares conversion rates between Control vs Test groups to determine if th
                     <p class="mt-1 text-sm text-gray-500">Activity will appear here as users interact with your experiment</p>
                 </div>
             @endif
-            </div>
-        </div>
     </div>
-    
-    <!-- Live Activity Feed -->
-    <div class="bg-white rounded shadow-lg hover:shadow-xl transition-all duration-300">
+</div>
+
+<!-- Live Activity Feed -->
+<div class="bg-white rounded shadow-lg hover:shadow-xl transition-all duration-300 mb-8">
         <div class="px-6 py-4 border-b border-gray-200">
             <div class="flex items-center justify-between">
                 <h3 class="text-lg font-semibold text-gray-900 flex items-center">
