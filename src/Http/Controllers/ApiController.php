@@ -213,11 +213,15 @@ class ApiController extends Controller
             $totalAssignments = array_sum(array_column($variants, 'participants'));
             $totalConversions = array_sum(array_column($variants, 'conversions'));
             
+            // Calculate statistical significance for API
+            $significance = $this->calculateStatisticalSignificanceForAPI($variants);
+            
             return response()->json([
                 'success' => true,
                 'total_assignments' => $totalAssignments,
                 'total_conversions' => $totalConversions,
                 'variants' => $variants,
+                'statistical_significance' => $significance,
                 'updated_at' => now()->toISOString()
             ]);
             
@@ -404,5 +408,104 @@ class ApiController extends Controller
         ];
         
         return $colors[$variant] ?? $colors['default'];
+    }
+    
+    private function calculateStatisticalSignificanceForAPI(array $variants): array
+    {
+        // Find control and test variants
+        $control = null;
+        $test = null;
+        
+        foreach ($variants as $variant => $data) {
+            if ($variant === 'control') {
+                $control = $data;
+            } else {
+                $test = $data; // Use first non-control variant
+                break;
+            }
+        }
+        
+        if (!$control || !$test || $control['participants'] < 30 || $test['participants'] < 30) {
+            return [
+                'percentage' => 0,
+                'status' => 'insufficient_data',
+                'message' => 'Need at least 30 participants per variant',
+                'confidence_level' => 'low'
+            ];
+        }
+
+        // Two-proportion z-test
+        $n1 = $control['participants'];
+        $x1 = $control['conversions'];
+        $p1 = $x1 / $n1;
+        
+        $n2 = $test['participants'];
+        $x2 = $test['conversions'];
+        $p2 = $x2 / $n2;
+        
+        // Pooled proportion
+        $p_pool = ($x1 + $x2) / ($n1 + $n2);
+        
+        // Standard error
+        $se = sqrt($p_pool * (1 - $p_pool) * (1/$n1 + 1/$n2));
+        
+        if ($se == 0) {
+            return [
+                'percentage' => 0,
+                'status' => 'no_difference',
+                'message' => 'No measurable difference',
+                'confidence_level' => 'low'
+            ];
+        }
+        
+        // Z-score
+        $z = abs($p2 - $p1) / $se;
+        
+        // Convert to p-value (two-tailed test)
+        $p_value = 2 * (1 - $this->normalCDF($z));
+        
+        // Convert to confidence percentage
+        $confidence = (1 - $p_value) * 100;
+        
+        // Determine status and message
+        if ($confidence >= 95) {
+            $status = 'significant';
+            $message = 'Statistically Significant';
+            $level = 'high';
+        } elseif ($confidence >= 90) {
+            $status = 'approaching';
+            $message = 'Approaching Significance';
+            $level = 'medium';
+        } elseif ($confidence >= 80) {
+            $status = 'trending';  
+            $message = 'Trending Towards Significance';
+            $level = 'medium';
+        } else {
+            $status = 'not_significant';
+            $message = 'Not Yet Significant';
+            $level = 'low';
+        }
+        
+        return [
+            'percentage' => round($confidence, 1),
+            'status' => $status,
+            'message' => $message,
+            'confidence_level' => $level,
+            'p_value' => round($p_value, 4),
+            'z_score' => round($z, 3)
+        ];
+    }
+    
+    private function normalCDF($x)
+    {
+        // Approximation of the cumulative distribution function for standard normal distribution
+        $t = 1.0 / (1.0 + 0.2316419 * abs($x));
+        $y = $t * (0.319381530 + $t * (-0.356563782 + $t * (1.781477937 + $t * (-1.821255978 + $t * 1.330274429))));
+        
+        if ($x >= 0) {
+            return 1.0 - 0.3989423 * exp(-0.5 * $x * $x) * $y;
+        } else {
+            return 0.3989423 * exp(-0.5 * $x * $x) * $y;
+        }
     }
 }

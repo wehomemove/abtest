@@ -29,7 +29,7 @@
                     {{ $experiment->is_active ? 'Pause' : 'Activate' }}
                 </button>
             </form>
-            <a href="{{ route('ab-testing.dashboard.edit', $experiment) }}" 
+            <a href="{{ route('ab-testing.dashboard.edit', $experiment) }}"
                class="px-6 py-3 bg-white text-red-600 rounded hover:bg-red-50 font-medium transition-all duration-200 transform hover:scale-105">
                 Edit
             </a>
@@ -46,7 +46,7 @@
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-medium text-gray-600 flex items-center">
                     Total Participants
-                    <i class="fas fa-info-circle text-gray-400 ml-1 text-xs cursor-help" 
+                    <i class="fas fa-info-circle text-gray-400 ml-1 text-xs cursor-help"
                        title="Total number of users assigned to this experiment"></i>
                 </h3>
                 <div class="text-blue-500">
@@ -119,16 +119,35 @@
                 <h3 class="text-sm font-medium text-gray-600 flex items-center">
                     Significance
                     <i class="fas fa-info-circle text-gray-400 ml-1 text-xs cursor-help"
-                       title="Statistical confidence that the results are real, not due to chance. 95%+ = Significant. Need more participants for reliable results."></i>
+                       title="📊 How Statistical Significance Works:
+
+🔬 Method: Two-Proportion Z-Test
+This compares conversion rates between Control vs Test groups to determine if the difference is real or just random chance.
+
+📈 The Calculation:
+1. Control Rate: {{ $stats['variants']['control']['converted'] ?? 0 }}/{{ $stats['variants']['control']['assigned'] ?? 0 }} = {{ $stats['variants']['control']['conversion_rate'] ?? 0 }}%
+2. Test Rate: {{ collect($stats['variants'])->where('variants', '!=', 'control')->first()['converted'] ?? 0 }}/{{ collect($stats['variants'])->where('variants', '!=', 'control')->first()['assigned'] ?? 0 }} = {{ collect($stats['variants'])->except('control')->first()['conversion_rate'] ?? 0 }}%
+3. Z-Score: {{ $stats['statistical_significance']['z_score'] ?? 'N/A' }} (measures how many standard deviations apart the rates are)
+4. P-Value: {{ $stats['statistical_significance']['p_value'] ?? 'N/A' }} (probability this difference happened by chance)
+
+✅ Confidence Levels:
+• 95%+ = Statistically Significant (< 5% chance it's random)
+• 90-94% = Approaching Significance 
+• 80-89% = Trending Towards Significance
+• < 80% = Not Yet Significant (need more data)
+
+📊 Current: {{ $stats['statistical_significance']['percentage'] ?? 0 }}% confident this difference is real"></i>
                 </h3>
                 <div class="text-purple-500">
                     <i class="fas fa-flask text-xl"></i>
                 </div>
             </div>
-            <div class="text-2xl font-bold text-purple-600 mb-1">85%</div>
+            <div class="text-2xl font-bold {{ $stats['statistical_significance']['confidence_level'] === 'high' ? 'text-green-600' : ($stats['statistical_significance']['confidence_level'] === 'medium' ? 'text-yellow-600' : 'text-red-600') }} mb-1">
+                {{ $stats['statistical_significance']['percentage'] }}%
+            </div>
             <div class="flex items-center">
-                <span class="text-xs font-medium text-purple-500" id="significance-status">
-                    <span id="significance-message">Needs More Data</span>
+                <span class="text-xs font-medium {{ $stats['statistical_significance']['confidence_level'] === 'high' ? 'text-green-500' : ($stats['statistical_significance']['confidence_level'] === 'medium' ? 'text-yellow-500' : 'text-red-500') }}" id="significance-status">
+                    <span id="significance-message">{{ $stats['statistical_significance']['message'] }}</span>
                 </span>
             </div>
         </div>
@@ -195,7 +214,7 @@
         <div class="flex items-center justify-between mb-6">
             <h3 class="text-lg font-semibold text-gray-900 flex items-center">
                 Conversion Rate Trends
-                <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help" 
+                <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
                    title="Shows how conversion rates change over time for each variant"></i>
             </h3>
             <div class="flex space-x-2">
@@ -216,7 +235,7 @@
     <div class="bg-white rounded shadow-lg p-6 hover:shadow-xl transition-all duration-300">
         <h3 class="text-lg font-semibold text-gray-900 mb-6 flex items-center">
             Variant Performance
-            <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help" 
+            <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
                title="Distribution of conversions across all variants"></i>
         </h3>
         <div class="relative h-64">
@@ -230,7 +249,7 @@
             const variantNames = Object.keys(variants);
             const conversionData = variantNames.map(variant => variants[variant].converted);
             const variantColors = ['#6B7280', '#DC2626', '#10B981', '#F59E0B'];
-            
+
             new Chart(variantCtx, {
                 type: 'doughnut',
                 data: {
@@ -268,7 +287,7 @@
         <div class="px-6 py-4 border-b border-gray-200">
             <h3 class="text-lg font-semibold text-gray-900 flex items-center">
                 Variant Performance Details
-                <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help" 
+                <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
                    title="Detailed breakdown of each variant's performance metrics"></i>
             </h3>
         </div>
@@ -331,7 +350,7 @@
             <div class="flex items-center justify-between">
                 <h3 class="text-lg font-semibold text-gray-900 flex items-center">
                     Live Activity
-                    <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help" 
+                    <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
                        title="Real-time feed of user actions and conversions"></i>
                 </h3>
                 <div class="flex items-center text-green-500">
@@ -400,7 +419,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Summary Cards -->
     <div class="p-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -421,16 +440,16 @@
                 <div class="text-sm text-orange-700 font-medium">Avg per User</div>
             </div>
         </div>
-        
+
         <!-- Compact User List -->
         <div id="user-activity-list" class="space-y-2 max-h-96 overflow-y-auto">
             @if($stats['user_events']->count() > 0)
                 @foreach($stats['user_events']->take(20) as $index => $userData)
-                    <div class="user-activity-item border border-gray-200 rounded hover:shadow-md transition-all duration-200 cursor-pointer" 
-                         data-variant="{{ $userData['variant'] }}" 
-                         data-converted="{{ collect($userData['events'])->has('conversion') ? 'true' : 'false' }}" 
-                         data-activity="{{ $userData['total_interactions'] }}" 
-                         data-recent="{{ \Carbon\Carbon::parse($userData['last_activity'])->diffInHours() < 24 ? 'true' : 'false' }}" 
+                    <div class="user-activity-item border border-gray-200 rounded hover:shadow-md transition-all duration-200 cursor-pointer"
+                         data-variant="{{ $userData['variant'] }}"
+                         data-converted="{{ collect($userData['events'])->has('conversion') ? 'true' : 'false' }}"
+                         data-activity="{{ $userData['total_interactions'] }}"
+                         data-recent="{{ \Carbon\Carbon::parse($userData['last_activity'])->diffInHours() < 24 ? 'true' : 'false' }}"
                          onclick="showUserDetails({{ $index }}, @js($userData))">
                         <div class="p-4">
                             <div class="flex items-center justify-between">
@@ -468,7 +487,7 @@
                         </div>
                     </div>
                 @endforeach
-                
+
                 @if($stats['user_events']->count() > 20)
                     <div class="text-center py-4">
                         <button onclick="loadMoreUsers()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors font-medium">
@@ -501,16 +520,16 @@ let experimentData = {
 
 async function initChart() {
     const ctx = document.getElementById('conversionChart').getContext('2d');
-    
+
     // Destroy existing chart if it exists
     if (conversionChart) {
         conversionChart.destroy();
     }
-    
+
     const variants = @json($stats['variants']);
     const variantNames = Object.keys(variants);
     const colors = ['#6B7280', '#DC2626', '#10B981', '#F59E0B']; // Gray for control, red for primary variant, green for winning, amber for others
-    
+
     conversionChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -568,7 +587,7 @@ async function initChart() {
 function generateTimeLabels(period) {
     const labels = [];
     const now = new Date();
-    
+
     if (period === '24h') {
         for (let i = 23; i >= 0; i--) {
             const time = new Date(now.getTime() - (i * 60 * 60 * 1000));
@@ -598,7 +617,7 @@ async function generateRealData(period) {
     } catch (error) {
         console.error('Error fetching chart data:', error);
     }
-    
+
     // Fallback to empty data if API fails
     let length = period === '24h' ? 24 : period === '7d' ? 7 : 10;
     return Array(length).fill(0);
@@ -606,7 +625,7 @@ async function generateRealData(period) {
 
 async function updateChartPeriod(period) {
     currentPeriod = period;
-    
+
     // Update button styles
     const buttons = ['24h', '7d', '30d'];
     buttons.forEach(p => {
@@ -617,18 +636,18 @@ async function updateChartPeriod(period) {
             btn.className = 'px-3 py-1 rounded-md text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300';
         }
     });
-    
+
     // Update chart data with real data
     if (conversionChart) {
         conversionChart.data.labels = generateTimeLabels(period);
-        
+
         // Update each dataset with real data
         const realData = await generateRealData(period);
         for (let i = 0; i < conversionChart.data.datasets.length; i++) {
             const dataset = conversionChart.data.datasets[i];
             dataset.data = realData;
         }
-        
+
         conversionChart.update();
     }
 }
@@ -657,17 +676,17 @@ async function fetchLatestStats() {
 
 function updateLiveIndicators() {
     if (!statsData || !statsData.variants) return;
-    
+
     // Calculate real trends from actual data
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     // These would come from real API data with time filtering
     // For now, we'll update the main stats display with real data
     const totalAssignments = statsData.total_assignments || 0;
     const totalConversions = statsData.total_conversions || 0;
     const currentRate = totalAssignments > 0 ? ((totalConversions / totalAssignments) * 100).toFixed(2) : 0;
-    
+
     // Update main numbers with real data
     document.querySelector('.text-2xl.font-bold.text-gray-900').textContent = totalAssignments.toLocaleString();
     document.querySelectorAll('.text-2xl.font-bold.text-gray-900')[1].textContent = totalConversions.toLocaleString();
@@ -689,7 +708,7 @@ async function fetchRecentActivity() {
 function updateActivityFeed(activities) {
     const feed = document.getElementById('live-activity-feed');
     feed.innerHTML = ''; // Clear existing
-    
+
     activities.forEach(activity => {
         addToActivityFeed(activity.message, activity.color, activity.time, false);
     });
@@ -697,7 +716,7 @@ function updateActivityFeed(activities) {
 
 function addToActivityFeed(message, colorClass, timeAgo = 'Just now', animate = true) {
     const feed = document.getElementById('live-activity-feed');
-    
+
     const activityItem = document.createElement('div');
     activityItem.className = `flex items-start space-x-3 text-sm text-gray-600 ${animate ? 'animate-pulse' : ''}`;
     activityItem.innerHTML = `
@@ -707,17 +726,17 @@ function addToActivityFeed(message, colorClass, timeAgo = 'Just now', animate = 
             <div class="text-xs text-gray-400">${timeAgo}</div>
         </div>
     `;
-    
+
     // Add to top of feed
     feed.insertBefore(activityItem, feed.firstChild);
-    
+
     // Remove animation after 2 seconds
     if (animate) {
         setTimeout(() => {
             activityItem.classList.remove('animate-pulse');
         }, 2000);
     }
-    
+
     // Keep only last 15 items
     while (feed.children.length > 15) {
         feed.removeChild(feed.lastChild);
@@ -729,18 +748,18 @@ function showLiveNotification(message) {
     notification.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg transform translate-x-full transition-transform duration-300 z-50';
     notification.innerHTML = `
         <div class="flex items-center space-x-2">
-            <div class="w-2 h-2 bg-red-300 rounded-full animate-pulse"></div>
+            <div class="w-2 h-2 bg-green-300 rounded-full animate-pulse"></div>
             <span class="text-sm font-medium">${message}</span>
         </div>
     `;
-    
+
     document.body.appendChild(notification);
-    
+
     // Slide in
     setTimeout(() => {
         notification.classList.remove('translate-x-full');
     }, 100);
-    
+
     // Slide out and remove
     setTimeout(() => {
         notification.classList.add('translate-x-full');
@@ -755,7 +774,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     await initChart();
     startRealTimeUpdates();
     fetchRecentActivity(); // Load initial activity
-    
+
     // Load real chart data after initialization
     setTimeout(async () => {
         await updateChartPeriod('24h');
@@ -766,10 +785,10 @@ document.addEventListener('DOMContentLoaded', async function() {
 function filterUserActivity() {
     const filter = document.getElementById('activity-filter').value;
     const items = document.querySelectorAll('.user-activity-item');
-    
+
     items.forEach(item => {
         let show = false;
-        
+
         switch(filter) {
             case 'all':
                 show = true;
@@ -784,7 +803,7 @@ function filterUserActivity() {
                 show = item.dataset.recent === 'true';
                 break;
         }
-        
+
         item.style.display = show ? 'block' : 'none';
     });
 }
@@ -822,7 +841,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function toggleAccordion(id) {
     const content = document.getElementById(id);
     const icon = document.getElementById('icon-' + id);
-    
+
     if (content.classList.contains('hidden')) {
         content.classList.remove('hidden');
         icon.classList.add('rotate-180');
