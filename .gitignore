@@ -1,1 +1,11 @@
-vendor
+vendor/
+composer.lock
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+node_modules/
+.phpunit.result.cache
+storage/
+bootstrap/cache/

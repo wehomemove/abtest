@@ -283,7 +283,6 @@
       <path value="$PROJECT_DIR$/vendor/symfony/polyfill-php84" />
       <path value="$PROJECT_DIR$/vendor/fakerphp/faker" />
       <path value="$PROJECT_DIR$/../motus/vendor/laravel/slack-notification-channel" />
-      <path value="$PROJECT_DIR$/../motus/vendor/wehomemove/abtest" />
       <path value="$PROJECT_DIR$/../motus/vendor/sebastian/object-enumerator" />
       <path value="$PROJECT_DIR$/../motus/vendor/sebastian/global-state" />
       <path value="$PROJECT_DIR$/../motus/vendor/symfony/yaml" />
@@ -331,6 +330,7 @@
       <path value="$PROJECT_DIR$/../motus/vendor/phar-io/version" />
       <path value="$PROJECT_DIR$/../motus/vendor/phar-io/manifest" />
       <path value="$PROJECT_DIR$/../motus/vendor/filp/whoops" />
+      <path value="$PROJECT_DIR$/../motus/vendor/wehomemove/abtest" />
     </include_path>
   </component>
   <component name="PhpProjectSharedConfiguration" php_language_level="8.1">

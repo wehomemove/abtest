@@ -105,36 +105,31 @@ class EventTest extends TestCase
     }
 
     /** @test */
-    public function it_belongs_to_user_assignment()
+    public function it_can_store_and_retrieve_properties()
     {
         $experiment = Experiment::create([
-            'name' => 'assignment_test',
+            'name' => 'properties_test',
             'variants' => ['control' => 100],
             'is_active' => true,
         ]);
 
-        // Create user assignment
-        DB::table('ab_user_assignments')->insert([
-            'experiment_id' => $experiment->id,
-            'user_id' => 'assigned_user',
-            'variant' => 'control',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $properties = [
+            'page' => 'checkout',
+            'button_text' => 'Buy Now',
+            'price' => 29.99
+        ];
 
         $event = Event::create([
             'experiment_id' => $experiment->id,
-            'user_id' => 'assigned_user',
+            'user_id' => 'test_user',
             'variant' => 'control',
-            'event_name' => 'interaction',
+            'event_name' => 'button_click',
+            'properties' => $properties,
         ]);
 
-        $assignment = $event->assignment;
-
-        $this->assertNotNull($assignment);
-        $this->assertEquals($experiment->id, $assignment->experiment_id);
-        $this->assertEquals('assigned_user', $assignment->user_id);
-        $this->assertEquals('control', $assignment->variant);
+        $this->assertEquals($properties, $event->properties);
+        $this->assertEquals('checkout', $event->properties['page']);
+        $this->assertEquals(29.99, $event->properties['price']);
     }
 
     /** @test */

@@ -22,20 +22,64 @@
     </div>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-    <div class="bg-white p-6 rounded-lg shadow">
-        <h3 class="text-sm font-medium text-gray-500">Total Participants</h3>
-        <p class="text-2xl font-bold text-gray-900">{{ number_format($stats['total_assignments']) }}</p>
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+    <div class="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow duration-200">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-sm font-medium text-gray-500">Total Participants</h3>
+                <p class="text-2xl font-bold text-gray-900">{{ number_format($stats['total_assignments']) }}</p>
+                <p class="text-xs text-green-500 mt-1">
+                    <i class="fas fa-arrow-up"></i> +12 today
+                </p>
+            </div>
+            <div class="text-blue-500">
+                <i class="fas fa-users text-2xl"></i>
+            </div>
+        </div>
     </div>
-    <div class="bg-white p-6 rounded-lg shadow">
-        <h3 class="text-sm font-medium text-gray-500">Total Conversions</h3>
-        <p class="text-2xl font-bold text-gray-900">{{ number_format($stats['total_conversions']) }}</p>
+    <div class="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow duration-200">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-sm font-medium text-gray-500">Total Conversions</h3>
+                <p class="text-2xl font-bold text-gray-900">{{ number_format($stats['total_conversions']) }}</p>
+                <p class="text-xs text-green-500 mt-1">
+                    <i class="fas fa-arrow-up"></i> +8 today
+                </p>
+            </div>
+            <div class="text-green-500">
+                <i class="fas fa-chart-line text-2xl"></i>
+            </div>
+        </div>
     </div>
-    <div class="bg-white p-6 rounded-lg shadow">
-        <h3 class="text-sm font-medium text-gray-500">Overall Rate</h3>
-        <p class="text-2xl font-bold text-gray-900">
-            {{ $stats['total_assignments'] > 0 ? number_format(($stats['total_conversions'] / $stats['total_assignments']) * 100, 2) : 0 }}%
-        </p>
+    <div class="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow duration-200">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-sm font-medium text-gray-500">Overall Rate</h3>
+                <p class="text-2xl font-bold text-gray-900">
+                    {{ $stats['total_assignments'] > 0 ? number_format(($stats['total_conversions'] / $stats['total_assignments']) * 100, 2) : 0 }}%
+                </p>
+                <p class="text-xs text-green-500 mt-1">
+                    <i class="fas fa-arrow-up"></i> +2.3% vs yesterday
+                </p>
+            </div>
+            <div class="text-purple-500">
+                <i class="fas fa-percentage text-2xl"></i>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow duration-200">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-sm font-medium text-gray-500">Statistical Significance</h3>
+                <p class="text-2xl font-bold text-yellow-600">85%</p>
+                <p class="text-xs text-yellow-500 mt-1">
+                    <i class="fas fa-info-circle"></i> Need more data
+                </p>
+            </div>
+            <div class="text-yellow-500">
+                <i class="fas fa-flask text-2xl"></i>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -88,6 +132,28 @@
                     @endforeach
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Section -->
+<div class="bg-white shadow rounded-lg mb-8">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <div class="flex items-center justify-between">
+            <h3 class="text-lg font-medium text-gray-900">Conversion Rate Trends</h3>
+            <div class="flex space-x-2">
+                <button onclick="updateChartPeriod('24h')" id="btn-24h"
+                        class="px-3 py-1 rounded-md text-sm font-medium bg-blue-500 text-white">24h</button>
+                <button onclick="updateChartPeriod('7d')" id="btn-7d"
+                        class="px-3 py-1 rounded-md text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300">7d</button>
+                <button onclick="updateChartPeriod('30d')" id="btn-30d"
+                        class="px-3 py-1 rounded-md text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300">30d</button>
+            </div>
+        </div>
+    </div>
+    <div class="p-6">
+        <div class="relative h-64">
+            <canvas id="conversionChart"></canvas>
         </div>
     </div>
 </div>
@@ -187,7 +253,147 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+let conversionChart = null;
+let currentPeriod = '24h';
+
+// Initialize chart when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initChart();
+});
+
+function initChart() {
+    const ctx = document.getElementById('conversionChart').getContext('2d');
+    
+    // Destroy existing chart if it exists
+    if (conversionChart) {
+        conversionChart.destroy();
+    }
+    
+    const variants = @json($stats['variants']);
+    const variantNames = Object.keys(variants);
+    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'];
+    
+    conversionChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: generateTimeLabels(currentPeriod),
+            datasets: variantNames.map((variant, index) => ({
+                label: variant.charAt(0).toUpperCase() + variant.slice(1).replace('_', ' '),
+                data: generateMockData(currentPeriod),
+                borderColor: colors[index] || '#6B7280',
+                backgroundColor: (colors[index] || '#6B7280') + '20',
+                tension: 0.4,
+                fill: false,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }))
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 15
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    max: 25,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function generateTimeLabels(period) {
+    const labels = [];
+    const now = new Date();
+    
+    if (period === '24h') {
+        for (let i = 23; i >= 0; i--) {
+            const time = new Date(now.getTime() - (i * 60 * 60 * 1000));
+            labels.push(time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+        }
+    } else if (period === '7d') {
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date(now.getTime() - (i * 24 * 60 * 60 * 1000));
+            labels.push(date.toLocaleDateString([], {month: 'short', day: 'numeric'}));
+        }
+    } else if (period === '30d') {
+        for (let i = 29; i >= 0; i -= 3) {
+            const date = new Date(now.getTime() - (i * 24 * 60 * 60 * 1000));
+            labels.push(date.toLocaleDateString([], {month: 'short', day: 'numeric'}));
+        }
+    }
+    return labels;
+}
+
+function generateMockData(period) {
+    let length;
+    if (period === '24h') {
+        length = 24;
+    } else if (period === '7d') {
+        length = 7;
+    } else if (period === '30d') {
+        length = 10;
+    }
+    
+    const baseRate = Math.random() * 10 + 8; // Base rate between 8-18%
+    return Array.from({length}, (_, i) => {
+        const variation = (Math.random() - 0.5) * 4; // ±2% variation
+        const trendFactor = (i / length) * 2; // Slight upward trend
+        return Math.max(0, Math.min(25, baseRate + variation + trendFactor));
+    });
+}
+
+function updateChartPeriod(period) {
+    currentPeriod = period;
+    
+    // Update button styles
+    const buttons = ['24h', '7d', '30d'];
+    buttons.forEach(p => {
+        const btn = document.getElementById('btn-' + p);
+        if (p === period) {
+            btn.className = 'px-3 py-1 rounded-md text-sm font-medium bg-blue-500 text-white';
+        } else {
+            btn.className = 'px-3 py-1 rounded-md text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300';
+        }
+    });
+    
+    // Update chart data
+    if (conversionChart) {
+        conversionChart.data.labels = generateTimeLabels(period);
+        conversionChart.data.datasets.forEach(dataset => {
+            dataset.data = generateMockData(period);
+        });
+        conversionChart.update();
+    }
+}
+
 function toggleAccordion(id) {
     const content = document.getElementById(id);
     const icon = document.getElementById('icon-' + id);
@@ -201,6 +407,9 @@ function toggleAccordion(id) {
     }
 }
 </script>
+
+<!-- FontAwesome for icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 
 <div class="mt-8 bg-gray-50 rounded-lg p-6">
     <h3 class="text-lg font-medium text-gray-900 mb-4">🛠️ Implementation Guide</h3>

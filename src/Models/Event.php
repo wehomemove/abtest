@@ -28,8 +28,4 @@ class Event extends Model
         return $this->belongsTo(Experiment::class);
     }
 
-    public function assignment(): BelongsTo
-    {
-        return $this->belongsTo(UserAssignment::class, ['experiment_id', 'user_id'], ['experiment_id', 'user_id']);
-    }
 }

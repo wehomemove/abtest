@@ -69,12 +69,35 @@
                 </label>
             </div>
 
+            <!-- Duration Quick Settings -->
+            <div class="bg-blue-50 rounded-lg p-4 mb-4">
+                <h4 class="text-sm font-medium text-gray-700 mb-3">Quick Duration Setup:</h4>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                    <button type="button" onclick="setDuration(7)" 
+                            class="px-3 py-2 bg-white border border-blue-200 text-blue-600 rounded-md hover:bg-blue-50 text-sm font-medium">
+                        7 Days
+                    </button>
+                    <button type="button" onclick="setDuration(14)" 
+                            class="px-3 py-2 bg-white border border-blue-200 text-blue-600 rounded-md hover:bg-blue-50 text-sm font-medium">
+                        2 Weeks
+                    </button>
+                    <button type="button" onclick="setDuration(30)" 
+                            class="px-3 py-2 bg-white border border-blue-200 text-blue-600 rounded-md hover:bg-blue-50 text-sm font-medium">
+                        1 Month
+                    </button>
+                    <button type="button" onclick="setDuration(90)" 
+                            class="px-3 py-2 bg-white border border-blue-200 text-blue-600 rounded-md hover:bg-blue-50 text-sm font-medium">
+                        3 Months
+                    </button>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                         Start Date (Optional)
                     </label>
-                    <input type="datetime-local" name="start_date" 
+                    <input type="datetime-local" name="start_date" id="start_date"
                            value="{{ old('start_date', $experiment->start_date?->format('Y-m-d\TH:i')) }}"
                            class="w-full border border-gray-300 rounded-md px-3 py-2">
                 </div>
@@ -83,33 +106,53 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                         End Date (Optional)
                     </label>
-                    <input type="datetime-local" name="end_date"
+                    <input type="datetime-local" name="end_date" id="end_date"
                            value="{{ old('end_date', $experiment->end_date?->format('Y-m-d\TH:i')) }}"
                            class="w-full border border-gray-300 rounded-md px-3 py-2">
                 </div>
             </div>
         </div>
 
-        <div class="flex justify-between items-center mt-8 pt-6 border-t">
-            <form action="{{ route('ab-testing.dashboard.destroy', $experiment) }}" method="POST" class="inline"
-                  onsubmit="return confirm('Are you sure you want to delete this experiment? This cannot be undone.')">
-                @csrf
-                @method('DELETE')
-                <button type="submit" class="px-4 py-2 text-red-700 bg-red-100 rounded-md hover:bg-red-200">
-                    Delete Experiment
-                </button>
-            </form>
-            
-            <div class="flex space-x-3">
-                <a href="{{ route('ab-testing.dashboard.show', $experiment) }}" 
-                   class="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
-                    Cancel
-                </a>
-                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                    Update Experiment
-                </button>
-            </div>
+        <div class="flex justify-end space-x-3 mt-8 pt-6 border-t">
+            <a href="{{ route('ab-testing.dashboard.show', $experiment) }}" 
+               class="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                Cancel
+            </a>
+            <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                Update Experiment
+            </button>
         </div>
     </form>
 </div>
+
+<!-- Delete Form (separate from main form) -->
+<div class="mt-4">
+    <form action="{{ route('ab-testing.dashboard.destroy', $experiment) }}" method="POST" class="inline"
+          onsubmit="return confirm('Are you sure you want to delete this experiment? This cannot be undone.')">
+        @csrf
+        @method('DELETE')
+        <button type="submit" class="px-4 py-2 text-red-700 bg-red-100 rounded-md hover:bg-red-200">
+            Delete Experiment
+        </button>
+    </form>
+</div>
+
+<script>
+function setDuration(days) {
+    const now = new Date();  
+    const start = new Date(now);
+    const end = new Date(now);
+    end.setDate(start.getDate() + days);
+    
+    // Format for datetime-local input
+    document.getElementById('start_date').value = formatDateTimeLocal(start);
+    document.getElementById('end_date').value = formatDateTimeLocal(end);
+}
+
+function formatDateTimeLocal(date) {
+    const offset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().slice(0, 16);
+}
+</script>
 @endsection

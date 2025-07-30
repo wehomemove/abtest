@@ -11,14 +11,14 @@ class ApiController extends Controller
 {
     public function track(Request $request)
     {
-        try {
-            $validated = $request->validate([
-                'experiment' => 'required|string',
-                'event' => 'required|string',
-                'user_id' => 'nullable|string',
-                'properties' => 'array|nullable',
-            ]);
+        $validated = $request->validate([
+            'experiment' => 'required|string',
+            'event' => 'required|string',
+            'user_id' => 'nullable|string',
+            'properties' => 'array|nullable',
+        ]);
 
+        try {
             AbTest::track(
                 $validated['experiment'],
                 $validated['user_id'] ?? null, // Use provided user_id or fall back to session
@@ -43,12 +43,12 @@ class ApiController extends Controller
 
     public function getVariant(Request $request)
     {
-        try {
-            $validated = $request->validate([
-                'experiment' => 'required|string',
-                'user_id' => 'nullable|string',
-            ]);
+        $validated = $request->validate([
+            'experiment' => 'required|string',
+            'user_id' => 'nullable|string',
+        ]);
 
+        try {
             $variant = AbTest::variant(
                 $validated['experiment'],
                 $validated['user_id'] ?? null
@@ -95,13 +95,13 @@ class ApiController extends Controller
 
     public function registerDebugExperiment(Request $request)
     {
-        try {
-            $validated = $request->validate([
-                'experiment' => 'required|string',
-                'variant' => 'required|string',
-                'source' => 'string|nullable',
-            ]);
+        $validated = $request->validate([
+            'experiment' => 'required|string',
+            'variant' => 'required|string',
+            'source' => 'string|nullable',
+        ]);
 
+        try {
             $service = app('ab-testing');
             $service->registerJsDebugExperiment(
                 $validated['experiment'],
