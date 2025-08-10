@@ -17,7 +17,7 @@
 }
 </style>
 <div id="ab-test-debug-wrapper" style="position: fixed; bottom: 20px; right: 20px; z-index: 999999;">
-    <div id="ab-test-debug-collapsed" style="display: none; width: 40px; height: 40px; background: linear-gradient(135deg, #1e293b 0%, #374151 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); position: relative;" onclick="toggleDebugger()">
+    <div id="ab-test-debug-collapsed" style="display: none; width: 40px; height: 40px; background: linear-gradient(135deg, #1e293b 0%, #374151 100%); border-radius: 50%; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); position: relative;" onclick="toggleDebugger()">
         <span style="font-size: 20px;">🐛</span>
         <div style="position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: {{ empty($experiments) ? '#ef4444' : '#10b981' }}; animation: blink 1s infinite; box-shadow: 0 0 4px {{ empty($experiments) ? '#ef4444' : '#10b981' }};"></div>
     </div>
