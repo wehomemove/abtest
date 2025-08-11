@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>A/B Test Debugger Test</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>Testing A/B Test Debugger</h1>
+    <p>This page tests if the toggleDebugger function is properly defined.</p>
+    
+    <!-- Simulating the debug view include -->
+    <?php 
+    $experiments = ['test_experiment' => ['variant' => 'control', 'calls' => 5, 'variants' => ['control' => 50, 'variant_b' => 50]]];
+    $userInfo = ['user_id' => 'test123', 'source' => 'session', 'cookie_exists' => true, 'session_exists' => true];
+    ?>
+    
+    <script>
+    // Immediately define global functions to ensure they're available for onclick handlers
+    (function() {
+        window.toggleDebugger = function() {
+            console.log('toggleDebugger called successfully!');
+            const fullDebugger = document.getElementById('ab-test-debug');
+            const collapsedDebugger = document.getElementById('ab-test-debug-collapsed');
+            
+            if (!fullDebugger || !collapsedDebugger) {
+                console.log('Debug elements not found');
+                return;
+            }
+            
+            if (fullDebugger.style.display === 'none') {
+                console.log('Showing full debugger');
+                fullDebugger.style.display = 'block';
+                collapsedDebugger.style.display = 'none';
+            } else {
+                console.log('Hiding full debugger');
+                fullDebugger.style.display = 'none';
+                collapsedDebugger.style.display = 'flex';
+            }
+        };
+    })();
+    
+    // Test that function is available
+    console.log('toggleDebugger function defined:', typeof window.toggleDebugger === 'function');
+    </script>
+    
+    <button onclick="toggleDebugger()">Test Toggle Debugger</button>
+    
+    <div id="ab-test-debug" style="background: #333; color: white; padding: 20px; margin: 20px;">
+        Full Debugger Panel
+    </div>
+    
+    <div id="ab-test-debug-collapsed" style="display: none; background: #666; color: white; padding: 10px; margin: 20px;">
+        Collapsed Debugger
+    </div>
+</body>
+</html>

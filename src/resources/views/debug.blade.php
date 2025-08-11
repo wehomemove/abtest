@@ -10,6 +10,27 @@
 @endphp
 
 @if(config('app.debug'))
+<script>
+// Immediately define global functions to ensure they're available for onclick handlers
+(function() {
+    window.toggleDebugger = function() {
+        const fullDebugger = document.getElementById('ab-test-debug');
+        const collapsedDebugger = document.getElementById('ab-test-debug-collapsed');
+        
+        if (!fullDebugger || !collapsedDebugger) return;
+        
+        if (fullDebugger.style.display === 'none') {
+            // Show full debugger, hide collapsed icon
+            fullDebugger.style.display = 'block';
+            collapsedDebugger.style.display = 'none';
+        } else {
+            // Hide full debugger, show collapsed icon
+            fullDebugger.style.display = 'none';
+            collapsedDebugger.style.display = 'flex';
+        }
+    };
+})();
+</script>
 <style>
 @keyframes blink {
     0%, 50% { opacity: 1; }
@@ -143,27 +164,7 @@
 </div>
 
 <script>
-// Define function immediately when script loads
-function toggleDebugger() {
-    const fullDebugger = document.getElementById('ab-test-debug');
-    const collapsedDebugger = document.getElementById('ab-test-debug-collapsed');
-    
-    if (!fullDebugger || !collapsedDebugger) return;
-    
-    if (fullDebugger.style.display === 'none') {
-        // Show full debugger, hide caterpillar
-        fullDebugger.style.display = 'block';
-        collapsedDebugger.style.display = 'none';
-    } else {
-        // Hide full debugger, show caterpillar
-        fullDebugger.style.display = 'none';
-        collapsedDebugger.style.display = 'flex';
-    }
-}
-
-// Also assign to window for global access
-window.toggleDebugger = toggleDebugger;
-
+// Additional A/B test functions
 window.switchVariant = function(experiment, variant) {
     // Set override cookies for Laravel A/B tests
     document.cookie = 'ab_test_override_' + experiment + '=' + variant + '; path=/; max-age=3600';
