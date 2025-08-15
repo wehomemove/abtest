@@ -38,12 +38,12 @@
 }
 </style>
 <div id="ab-test-debug-wrapper" style="position: fixed; bottom: 20px; right: 20px; z-index: 999999;">
-    <div id="ab-test-debug-collapsed" style="display: none; width: 40px; height: 40px; background: linear-gradient(135deg, #1e293b 0%, #374151 100%); border-radius: 50%; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); position: relative;" onclick="toggleDebugger()">
+    <div id="ab-test-debug-collapsed" style="display: flex; width: 40px; height: 40px; background: linear-gradient(135deg, #1e293b 0%, #374151 100%); border-radius: 50%; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); position: relative;" onclick="toggleDebugger()">
         <span style="font-size: 20px;">🐛</span>
         <div style="position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: {{ empty($experiments) ? '#ef4444' : '#10b981' }}; animation: blink 1s infinite; box-shadow: 0 0 4px {{ empty($experiments) ? '#ef4444' : '#10b981' }};"></div>
     </div>
     
-    <div id="ab-test-debug" style="background: linear-gradient(135deg, #1e293b 0%, #374151 100%); color: white; border-radius: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; box-shadow: 0 10px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.1); min-width: 320px; max-width: 400px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);">
+    <div id="ab-test-debug" style="display: none; background: linear-gradient(135deg, #1e293b 0%, #374151 100%); color: white; border-radius: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; box-shadow: 0 10px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.1); min-width: 320px; max-width: 400px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);">
         <div style="display: flex; align-items: center; padding: 16px 20px 12px 20px; border-bottom: 1px solid rgba(255,255,255,0.1);">
             <div style="width: 24px; height: 24px; background: linear-gradient(45deg, #10b981, #059669); border-radius: 6px; display: flex; align-items: center; justify-content: center; margin-right: 12px; font-size: 14px;">🧪</div>
             <span style="font-weight: 600; font-size: 14px; color: #f8fafc;">A/B Testing Debugger</span>
