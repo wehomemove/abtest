@@ -23,6 +23,7 @@ class Experiment extends Model
         'start_date',
         'end_date',
         'targeting_rules',
+        'allowed_device_types',
         'status',
     ];
 
@@ -32,6 +33,7 @@ class Experiment extends Model
         'success_metrics' => 'array',
         'custom_events' => 'array',
         'targeting_rules' => 'array',
+        'allowed_device_types' => 'array',
         'is_active' => 'boolean',
         'start_date' => 'datetime',
         'end_date' => 'datetime',
@@ -83,7 +85,7 @@ class Experiment extends Model
         }
 
         $now = now();
-        
+
         if ($this->start_date && $now->lt($this->start_date)) {
             return false;
         }
@@ -99,8 +101,8 @@ class Experiment extends Model
     {
         $controlStats = $this->getVariantStats('control');
         $variantStats = $this->getVariantStats($variant);
-        
-        if ($controlStats['total'] < $this->minimum_sample_size || 
+
+        if ($controlStats['total'] < $this->minimum_sample_size ||
             $variantStats['total'] < $this->minimum_sample_size) {
             return [
                 'significant' => false,
@@ -113,12 +115,12 @@ class Experiment extends Model
         // Two-proportion z-test
         $p1 = $controlStats['conversions'] / $controlStats['total'];
         $p2 = $variantStats['conversions'] / $variantStats['total'];
-        $pooledP = ($controlStats['conversions'] + $variantStats['conversions']) / 
+        $pooledP = ($controlStats['conversions'] + $variantStats['conversions']) /
                    ($controlStats['total'] + $variantStats['total']);
-        
-        $se = sqrt($pooledP * (1 - $pooledP) * 
+
+        $se = sqrt($pooledP * (1 - $pooledP) *
                   ((1 / $controlStats['total']) + (1 / $variantStats['total'])));
-        
+
         if ($se == 0) {
             return [
                 'significant' => false,
@@ -130,7 +132,7 @@ class Experiment extends Model
 
         $z = ($p2 - $p1) / $se;
         $pValue = 2 * (1 - $this->normalCDF(abs($z)));
-        
+
         $isSignificant = $pValue < (1 - ($this->confidence_level / 100));
         $confidence = (1 - $pValue) * 100;
 
@@ -139,7 +141,7 @@ class Experiment extends Model
             'confidence' => round($confidence, 2),
             'p_value' => round($pValue, 4),
             'z_score' => round($z, 3),
-            'message' => $isSignificant ? 
+            'message' => $isSignificant ?
                 "Statistically significant at {$this->confidence_level}% confidence" :
                 'Not statistically significant'
         ];
@@ -170,12 +172,12 @@ class Experiment extends Model
     private function erf($x): float
     {
         // Approximation of the error function
-        $a1 =  0.254829592;
+        $a1 = 0.254829592;
         $a2 = -0.284496736;
-        $a3 =  1.421413741;
+        $a3 = 1.421413741;
         $a4 = -1.453152027;
-        $a5 =  1.061405429;
-        $p  =  0.3275911;
+        $a5 = 1.061405429;
+        $p = 0.3275911;
 
         $sign = $x < 0 ? -1 : 1;
         $x = abs($x);
@@ -189,5 +191,20 @@ class Experiment extends Model
     public function canRunInApplication($app): bool
     {
         return in_array($app, $this->target_applications ?? ['motus', 'apollo', 'olympus']);
+    }
+
+    public function allowsDevice(?string $device): bool
+    {
+        $allowed = $this->allowed_device_types;
+
+        if (empty($allowed)) {
+            return true;
+        }
+
+        if ($device === null) {
+            return false;
+        }
+
+        return in_array($device, $allowed, true);
     }
 }

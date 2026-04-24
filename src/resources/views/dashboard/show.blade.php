@@ -10,7 +10,7 @@
         <div>
             <h1 class="text-3xl font-bold mb-2">{{ $experiment->name }}</h1>
             <p class="text-gray-100 text-lg">{{ $experiment->description }}</p>
-            <div class="flex items-center mt-3 space-x-4">
+            <div class="flex items-center mt-3 space-x-4 flex-wrap">
                 <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ $experiment->is_active ? 'bg-red-500 text-white' : 'bg-red-500 text-white' }}">
                     <div class="w-2 h-2 rounded-full mr-2 {{ $experiment->is_active ? 'bg-green-300' : 'bg-red-300' }}"></div>
                     {{ $experiment->is_active ? 'Active' : 'Paused' }}
@@ -19,9 +19,30 @@
                     <i class="fas fa-users mr-1"></i>
                     {{ number_format($stats['total_assignments']) }} participants
                 </span>
+                @if (! empty($experiment->allowed_device_types))
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-500 text-white">
+                        <i class="fas fa-mobile-alt mr-1"></i>
+                        Targets: {{ implode(' · ', array_map('ucfirst', $experiment->allowed_device_types)) }}
+                    </span>
+                @endif
+                @if ($activeDeviceType)
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-400 text-gray-900">
+                        <i class="fas fa-filter mr-1"></i>
+                        Stats filtered to {{ ucfirst($activeDeviceType) }}
+                    </span>
+                @endif
             </div>
         </div>
         <div class="flex items-center space-x-3">
+            <label class="sr-only" for="device-filter">Device</label>
+            <select id="device-filter"
+                    class="px-3 py-3 rounded text-sm text-gray-800 border border-transparent focus:ring-2 focus:ring-yellow-400"
+                    onchange="handleDeviceFilterChange(this.value)">
+                <option value="">All devices</option>
+                <option value="mobile" {{ $activeDeviceType === 'mobile' ? 'selected' : '' }}>Mobile</option>
+                <option value="tablet" {{ $activeDeviceType === 'tablet' ? 'selected' : '' }}>Tablet</option>
+                <option value="desktop" {{ $activeDeviceType === 'desktop' ? 'selected' : '' }}>Desktop</option>
+            </select>
             <form action="{{ route('ab-testing.dashboard.toggle', $experiment) }}" method="POST" class="inline">
                 @csrf
                 @method('PATCH')
@@ -394,6 +415,23 @@ let experimentData = {
     isActive: {{ $experiment->is_active ? 'true' : 'false' }},
     id: {{ $experiment->id }}
 };
+window.activeDeviceType = @json($activeDeviceType);
+
+function buildApiUrl(path) {
+    const base = `/api/ab-testing/experiments/${experimentData.id}${path}`;
+    return window.activeDeviceType ? `${base}?device_type=${encodeURIComponent(window.activeDeviceType)}` : base;
+}
+
+function handleDeviceFilterChange(value) {
+    // Full page reload with ?device_type=... so the server-rendered stats/tables are consistent with the filter.
+    const url = new URL(window.location.href);
+    if (value) {
+        url.searchParams.set('device_type', value);
+    } else {
+        url.searchParams.delete('device_type');
+    }
+    window.location.href = url.toString();
+}
 
 // Real-time updates
 function startRealTimeUpdates() {
@@ -406,7 +444,7 @@ function startRealTimeUpdates() {
 
 async function fetchLatestStats() {
     try {
-        const response = await fetch(`/api/ab-testing/experiments/${experimentData.id}/stats`);
+        const response = await fetch(buildApiUrl('/stats'));
         if (response.ok) {
             const newStats = await response.json();
             statsData = newStats;
@@ -448,7 +486,7 @@ function updateLiveIndicators() {
 
 async function fetchRecentActivity() {
     try {
-        const response = await fetch(`/api/ab-testing/experiments/${experimentData.id}/recent-activity`);
+        const response = await fetch(buildApiUrl('/recent-activity'));
         if (response.ok) {
             const activities = await response.json();
             updateActivityFeed(activities);

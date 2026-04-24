@@ -60,6 +60,31 @@
                 </div>
             </div>
 
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Device Targeting
+                </label>
+                @php
+                    // null stored = no restriction = treat as all three selected for the form.
+                    $currentDevices = $experiment->allowed_device_types;
+                    $defaultDevices = empty($currentDevices) ? ['mobile', 'tablet', 'desktop'] : $currentDevices;
+                    $selectedDevices = old('allowed_device_types', $defaultDevices);
+                @endphp
+                <div class="flex flex-wrap gap-4">
+                    @foreach (['mobile' => 'Mobile', 'tablet' => 'Tablet', 'desktop' => 'Desktop'] as $value => $label)
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="allowed_device_types[]" value="{{ $value }}"
+                                   {{ in_array($value, $selectedDevices) ? 'checked' : '' }}
+                                   class="h-4 w-4 text-blue-600 border-gray-300 rounded">
+                            <span class="ml-2 text-sm text-gray-700">{{ $label }}</span>
+                        </label>
+                    @endforeach
+                </div>
+                <p class="text-sm text-gray-500 mt-2">
+                    Narrowing device targeting mid-flight does not remove existing assignments — historical users stay attributed to their first-seen device in reports.
+                </p>
+            </div>
+
             <div class="flex items-center">
                 <input type="hidden" name="is_active" value="0">
                 <input type="checkbox" name="is_active" value="1" {{ old('is_active', $experiment->is_active) ? 'checked' : '' }}
