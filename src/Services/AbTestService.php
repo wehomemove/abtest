@@ -5,11 +5,14 @@ namespace Homemove\AbTesting\Services;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Jenssegers\Agent\Agent;
 
 class AbTestService
 {
     protected $cachePrefix = 'ab_test:';
+
     protected $cacheTtl = 3600; // 1 hour
+
     protected $debugExperiments = [];
 
     /**
@@ -18,35 +21,93 @@ class AbTestService
     public function variant(string $experimentName, $userId = null): string
     {
         $userId = $userId ?? $this->getSessionUserId();
-        
-        // Check for debug override cookie first
+
+        // Check for debug override cookie first — bypasses device gating so QA can force any variant.
         $overrideCookieName = "ab_test_override_{$experimentName}";
         if (isset($_COOKIE[$overrideCookieName])) {
             $overrideVariant = $_COOKIE[$overrideCookieName];
-            
+
             // Validate that the override variant is valid for this experiment
             $experiment = DB::table('ab_experiments')
                 ->where('name', $experimentName)
                 ->where('is_active', true)
                 ->first();
-                
+
             if ($experiment) {
                 $variants = json_decode($experiment->variants, true);
                 if (isset($variants[$overrideVariant])) {
                     $this->trackDebugExperiment($experimentName, $overrideVariant);
+
                     return $overrideVariant;
                 }
             }
         }
-        
-        $cacheKey = $this->cachePrefix . "variant:{$experimentName}:{$userId}";
-        
-        $variant = Cache::remember($cacheKey, $this->cacheTtl, function () use ($experimentName, $userId) {
-            return $this->assignVariant($experimentName, $userId);
+
+        $device = $this->detectDeviceType();
+
+        // Device-type gating: return 'control' without persisting an assignment.
+        $experimentRow = $this->getExperiment($experimentName);
+        if ($experimentRow && !$this->experimentAllowsDevice($experimentRow, $device)) {
+            $this->trackDebugExperiment($experimentName, 'control');
+
+            return 'control';
+        }
+
+        $cacheKey = $this->cachePrefix . "variant:{$experimentName}:{$userId}:" . ($device ?? 'unknown');
+
+        $variant = Cache::remember($cacheKey, $this->cacheTtl, function () use ($experimentName, $userId, $device) {
+            return $this->assignVariant($experimentName, $userId, $device);
         });
-        
+
         $this->trackDebugExperiment($experimentName, $variant);
+
         return $variant;
+    }
+
+    /**
+     * Detect the current request's device type via jenssegers/agent.
+     * Returns 'mobile' | 'tablet' | 'desktop', or null when no user-agent is present
+     * (e.g. CLI / queue worker).
+     */
+    protected function detectDeviceType(): ?string
+    {
+        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
+
+        if (empty($userAgent)) {
+            return null;
+        }
+
+        $agent = new Agent;
+        $agent->setUserAgent($userAgent);
+
+        if ($agent->isTablet()) {
+            return 'tablet';
+        }
+
+        if ($agent->isMobile()) {
+            return 'mobile';
+        }
+
+        return 'desktop';
+    }
+
+    /**
+     * Check if the experiment's allowed_device_types permits the current device.
+     * Accepts the DB-table row returned by getExperiment() (stdClass with JSON string).
+     */
+    protected function experimentAllowsDevice($experimentRow, ?string $device): bool
+    {
+        $allowed = json_decode($experimentRow->allowed_device_types ?? 'null', true);
+
+        if (empty($allowed)) {
+            return true;
+        }
+
+        if ($device === null) {
+            return false;
+        }
+
+        return in_array($device, $allowed, true);
     }
 
     /**
@@ -64,6 +125,7 @@ class AbTestService
     {
         $userId = $userId ?? $this->getSessionUserId();
         $variant = $this->variant($experimentName, $userId);
+        $device = $this->detectDeviceType();
 
         // Get experiment ID from name
         $experiment = DB::table('ab_experiments')->where('name', $experimentName)->first();
@@ -83,24 +145,26 @@ class AbTestService
             // Update existing event - increment a counter in properties
             $existingProperties = json_decode($existingEvent->properties, true) ?? [];
             $count = ($existingProperties['count'] ?? 1) + 1;
-            
+
             // Merge new properties with existing ones, updating the count
             $updatedProperties = array_merge($existingProperties, $properties, ['count' => $count]);
-            
+
             DB::table('ab_events')
                 ->where('id', $existingEvent->id)
                 ->update([
                     'properties' => json_encode($updatedProperties),
+                    'device_type' => $device ?? $existingEvent->device_type,
                     'updated_at' => now(),
                 ]);
         } else {
             // Create new event with count = 1
             $properties['count'] = 1;
-            
+
             DB::table('ab_events')->insert([
                 'experiment_id' => $experiment->id,
                 'user_id' => $userId,
                 'variant' => $variant,
+                'device_type' => $device,
                 'event_name' => $eventName,
                 'properties' => json_encode($properties),
                 'created_at' => now(),
@@ -112,11 +176,11 @@ class AbTestService
     /**
      * Assign a variant to a user
      */
-    protected function assignVariant(string $experimentName, $userId): string
+    protected function assignVariant(string $experimentName, $userId, ?string $device = null): string
     {
         // Get experiment configuration first
         $experiment = $this->getExperiment($experimentName);
-        
+
         if (!$experiment || !$experiment->is_active) {
             return 'control';
         }
@@ -134,11 +198,12 @@ class AbTestService
         // Assign variant based on traffic allocation
         $variant = $this->calculateVariant($userId, $experiment);
 
-        // Store assignment
+        // Store assignment — device_type captures the first-seen device for this user.
         DB::table('ab_user_assignments')->insert([
             'experiment_id' => $experiment->id,
             'user_id' => $userId,
             'variant' => $variant,
+            'device_type' => $device,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -152,16 +217,16 @@ class AbTestService
     protected function calculateVariant($userId, $experiment): string
     {
         $variants = json_decode($experiment->variants, true);
-        
+
         // Check if we should use adaptive allocation to balance distribution
         if ($this->shouldUseAdaptiveAllocation($experiment)) {
             return $this->calculateAdaptiveVariant($userId, $experiment, $variants);
         }
-        
+
         // Original hash-based assignment
         $hash = hexdec(substr(md5($experiment->name . $userId), 0, 8));
         $percentage = ($hash % 100) + 1;
-        
+
         $cumulative = 0;
         foreach ($variants as $variant => $weight) {
             $cumulative += (int) $weight; // Cast to integer to handle string values
@@ -183,7 +248,7 @@ class AbTestService
         $totalAssignments = DB::table('ab_user_assignments')
             ->where('experiment_id', $experiment->id)
             ->count();
-            
+
         return $totalAssignments >= 20;
     }
 
@@ -195,7 +260,7 @@ class AbTestService
         // Get current distribution
         $currentCounts = [];
         $totalAssignments = 0;
-        
+
         foreach (array_keys($variants) as $variant) {
             $count = DB::table('ab_user_assignments')
                 ->where('experiment_id', $experiment->id)
@@ -204,40 +269,41 @@ class AbTestService
             $currentCounts[$variant] = $count;
             $totalAssignments += $count;
         }
-        
+
         if ($totalAssignments == 0) {
             // Fallback to hash-based if no assignments yet
             return $this->calculateHashBasedVariant($userId, $experiment->name, $variants);
         }
-        
+
         // Calculate how far each variant is from its target percentage
         $targetPercentages = [];
         $deviations = [];
-        
+
         foreach ($variants as $variant => $targetWeight) {
             $targetPercentages[$variant] = (int) $targetWeight;
             $currentPercentage = ($currentCounts[$variant] / $totalAssignments) * 100;
             $deviations[$variant] = $targetPercentages[$variant] - $currentPercentage;
         }
-        
+
         // Find the variant that's most under-represented
         $maxDeviation = max($deviations);
-        
+
         // If the maximum deviation is small (< 5%), use normal hash-based assignment
         if ($maxDeviation < 5) {
             return $this->calculateHashBasedVariant($userId, $experiment->name, $variants);
         }
-        
+
         // Otherwise, assign to the most under-represented variant
         $underRepresentedVariants = array_keys($deviations, $maxDeviation);
-        
+
         // If multiple variants are equally under-represented, use hash to pick one
         if (count($underRepresentedVariants) > 1) {
             $hash = hexdec(substr(md5($experiment->name . $userId), 0, 8));
             $index = $hash % count($underRepresentedVariants);
+
             return $underRepresentedVariants[$index];
         }
-        
+
         return $underRepresentedVariants[0];
     }
 
@@ -248,7 +314,7 @@ class AbTestService
     {
         $hash = hexdec(substr(md5($experimentName . $userId), 0, 8));
         $percentage = ($hash % 100) + 1;
-        
+
         $cumulative = 0;
         foreach ($variants as $variant => $weight) {
             $cumulative += (int) $weight;
@@ -266,14 +332,13 @@ class AbTestService
     protected function getExperiment(string $name)
     {
         $cacheKey = $this->cachePrefix . "experiment:{$name}";
-        
+
         return Cache::remember($cacheKey, $this->cacheTtl, function () use ($name) {
             return DB::table('ab_experiments')
                 ->where('name', $name)
                 ->first();
         });
     }
-
 
     /**
      * Get or generate session-based user ID
@@ -290,15 +355,16 @@ class AbTestService
             $userId = session('ab_user_id');
             // Also store in cookie for reliability
             $this->setUserIdCookie($userId);
+
             return $userId;
         }
 
         // Generate new user ID
         $userId = Str::uuid()->toString();
-        
+
         // Store in both cookie and session
         $this->setUserIdCookie($userId);
-        
+
         try {
             if (!session()->isStarted()) {
                 session()->start();
@@ -309,7 +375,7 @@ class AbTestService
             // Session might not be available, cookie will handle it
             \Log::debug('AB Testing: Session not available, using cookie only', ['error' => $e->getMessage()]);
         }
-        
+
         return $userId;
     }
 
@@ -326,7 +392,7 @@ class AbTestService
     /**
      * Clear cache for an experiment
      */
-    public function clearCache(string $experimentName = null): void
+    public function clearCache(?string $experimentName = null): void
     {
         if ($experimentName) {
             Cache::forget($this->cachePrefix . "experiment:{$experimentName}");
@@ -353,7 +419,7 @@ class AbTestService
                 'calls' => 0
             ];
         }
-        
+
         $this->debugExperiments[$experimentName]['calls']++;
     }
 
@@ -374,7 +440,7 @@ class AbTestService
                 'variants' => $this->getExperimentVariants($experimentName)
             ];
         }
-        
+
         $this->debugExperiments[$experimentName]['calls']++;
         $this->debugExperiments[$experimentName]['variant'] = $variant; // Update current variant
     }
@@ -408,7 +474,7 @@ class AbTestService
     {
         $userId = null;
         $source = 'none';
-        
+
         // Check cookie first
         if (isset($_COOKIE['ab_user_id'])) {
             $userId = $_COOKIE['ab_user_id'];
@@ -419,7 +485,7 @@ class AbTestService
             $userId = session('ab_user_id');
             $source = 'session';
         }
-        
+
         return [
             'user_id' => $userId ?? 'not_set',
             'source' => $source,

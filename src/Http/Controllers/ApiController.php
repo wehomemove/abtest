@@ -2,10 +2,10 @@
 
 namespace Homemove\AbTesting\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Routing\Controller;
 use Homemove\AbTesting\Facades\AbTest;
 use Homemove\AbTesting\Models\Experiment;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 
 class ApiController extends Controller
 {
@@ -33,7 +33,7 @@ class ApiController extends Controller
 
         } catch (\Exception $e) {
             \Log::error('A/B Test tracking error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to track event'
@@ -62,7 +62,7 @@ class ApiController extends Controller
 
         } catch (\Exception $e) {
             \Log::error('A/B Test variant error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'variant' => 'control',
@@ -84,7 +84,7 @@ class ApiController extends Controller
 
         } catch (\Exception $e) {
             \Log::error('A/B Test variant error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'variant' => 'control',
@@ -116,7 +116,7 @@ class ApiController extends Controller
 
         } catch (\Exception $e) {
             \Log::error('A/B Test debug registration error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to register debug experiment'
@@ -128,7 +128,7 @@ class ApiController extends Controller
     {
         try {
             $exp = Experiment::where('name', $experiment)->first();
-            
+
             if (!$exp) {
                 return response()->json([
                     'success' => false,
@@ -163,7 +163,7 @@ class ApiController extends Controller
 
         } catch (\Exception $e) {
             \Log::error('A/B Test results error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get experiment results'
@@ -175,25 +175,32 @@ class ApiController extends Controller
     {
         try {
             $experiment = Experiment::findOrFail($experimentId);
-            
+            $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
+
             // Get variant statistics
             $variants = [];
             $controlRate = 0;
-            
+
             foreach ($experiment->variants as $variant => $weight) {
-                $assignments = $experiment->assignments()->where('variant', $variant)->count();
-                $conversions = $experiment->events()
+                $assignmentsQuery = $experiment->assignments()->where('variant', $variant);
+                $conversionsQuery = $experiment->events()
                     ->where('variant', $variant)
-                    ->where('event_name', 'conversion')
-                    ->distinct('user_id')
-                    ->count();
-                
+                    ->where('event_name', 'conversion');
+
+                if ($deviceType !== null) {
+                    $assignmentsQuery->where('device_type', $deviceType);
+                    $conversionsQuery->where('device_type', $deviceType);
+                }
+
+                $assignments = $assignmentsQuery->count();
+                $conversions = $conversionsQuery->distinct('user_id')->count();
+
                 $rate = $assignments > 0 ? round(($conversions / $assignments) * 100, 2) : 0;
-                
+
                 if ($variant === 'control') {
                     $controlRate = $rate;
                 }
-                
+
                 $variants[$variant] = [
                     'participants' => $assignments,
                     'conversions' => $conversions,
@@ -202,64 +209,72 @@ class ApiController extends Controller
                     'color' => $this->getVariantColor($variant)
                 ];
             }
-            
+
             // Calculate lift for non-control variants
             foreach ($variants as $variant => &$data) {
                 if ($variant !== 'control' && $controlRate > 0) {
                     $data['lift'] = round((($data['rate'] - $controlRate) / $controlRate) * 100, 1);
                 }
             }
-            
+
             $totalAssignments = array_sum(array_column($variants, 'participants'));
             $totalConversions = array_sum(array_column($variants, 'conversions'));
-            
+
             // Calculate statistical significance for API
             $significance = $this->calculateStatisticalSignificanceForAPI($variants);
-            
+
             return response()->json([
                 'success' => true,
+                'device_type' => $deviceType,
                 'total_assignments' => $totalAssignments,
                 'total_conversions' => $totalConversions,
                 'variants' => $variants,
                 'statistical_significance' => $significance,
                 'updated_at' => now()->toISOString()
             ]);
-            
+
         } catch (\Exception $e) {
             \Log::error('A/B Test stats error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get experiment stats'
             ], 500);
         }
     }
-    
+
     public function getRecentActivity(Request $request, $experimentId)
     {
         try {
             $experiment = Experiment::findOrFail($experimentId);
-            
+            $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
+
             // Get recent events and assignments
-            $recentEvents = $experiment->events()
+            $recentEventsQuery = $experiment->events()
                 ->with('experiment')
                 ->orderBy('created_at', 'desc')
-                ->limit(15)
-                ->get();
-                
-            $recentAssignments = $experiment->assignments()
+                ->limit(15);
+
+            $recentAssignmentsQuery = $experiment->assignments()
                 ->orderBy('created_at', 'desc')
-                ->limit(10)
-                ->get();
-            
+                ->limit(10);
+
+            if ($deviceType !== null) {
+                $recentEventsQuery->where('device_type', $deviceType);
+                $recentAssignmentsQuery->where('device_type', $deviceType);
+            }
+
+            $recentEvents = $recentEventsQuery->get();
+            $recentAssignments = $recentAssignmentsQuery->get();
+
             $activities = [];
-            
+
             // Add recent events
             foreach ($recentEvents as $event) {
                 $color = $this->getEventColor($event->event_name);
                 $message = $this->formatEventMessage($event);
                 $timeAgo = $event->created_at->diffForHumans();
-                
+
                 $activities[] = [
                     'message' => $message,
                     'color' => $color,
@@ -267,7 +282,7 @@ class ApiController extends Controller
                     'timestamp' => $event->created_at->timestamp
                 ];
             }
-            
+
             // Add recent assignments
             foreach ($recentAssignments as $assignment) {
                 $activities[] = [
@@ -277,31 +292,32 @@ class ApiController extends Controller
                     'timestamp' => $assignment->created_at->timestamp
                 ];
             }
-            
+
             // Sort by timestamp (most recent first - descending)
-            usort($activities, function($a, $b) {
+            usort($activities, function ($a, $b) {
                 return $b['timestamp'] - $a['timestamp'];
             });
-            
+
             // Return only the most recent 15, newest first
             return response()->json(array_slice($activities, 0, 15));
-            
+
         } catch (\Exception $e) {
             \Log::error('A/B Test recent activity error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get recent activity'
             ], 500);
         }
     }
-    
+
     public function getChartData(Request $request, $experimentId)
     {
         try {
             $experiment = Experiment::findOrFail($experimentId);
             $period = $request->get('period', '24h');
-            
+            $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
+
             // Calculate time range
             $now = now();
             switch ($period) {
@@ -325,33 +341,37 @@ class ApiController extends Controller
                     $interval = 'hour';
                     $points = 24;
             }
-            
+
             // Get conversion rates over time
             $values = [];
             for ($i = 0; $i < $points; $i++) {
-                $timePoint = $interval === 'hour' 
+                $timePoint = $interval === 'hour'
                     ? $startTime->copy()->addHours($i)
                     : $startTime->copy()->addDays($i * ($period === '30d' ? 3 : 1));
-                    
+
                 $nextTimePoint = $interval === 'hour'
                     ? $timePoint->copy()->addHour()
                     : $timePoint->copy()->addDay();
-                
+
                 // Get assignments and conversions in this time period
-                $assignments = $experiment->assignments()
-                    ->whereBetween('created_at', [$timePoint, $nextTimePoint])
-                    ->count();
-                    
-                $conversions = $experiment->events()
+                $assignmentsQuery = $experiment->assignments()
+                    ->whereBetween('created_at', [$timePoint, $nextTimePoint]);
+                $conversionsQuery = $experiment->events()
                     ->where('event_name', 'conversion')
-                    ->whereBetween('created_at', [$timePoint, $nextTimePoint])
-                    ->distinct('user_id')
-                    ->count();
-                
+                    ->whereBetween('created_at', [$timePoint, $nextTimePoint]);
+
+                if ($deviceType !== null) {
+                    $assignmentsQuery->where('device_type', $deviceType);
+                    $conversionsQuery->where('device_type', $deviceType);
+                }
+
+                $assignments = $assignmentsQuery->count();
+                $conversions = $conversionsQuery->distinct('user_id')->count();
+
                 $rate = $assignments > 0 ? round(($conversions / $assignments) * 100, 2) : 0;
                 $values[] = $rate;
             }
-            
+
             return response()->json([
                 'success' => true,
                 'values' => $values,
@@ -359,17 +379,17 @@ class ApiController extends Controller
                 'start_time' => $startTime->toISOString(),
                 'end_time' => $now->toISOString()
             ]);
-            
+
         } catch (\Exception $e) {
             \Log::error('A/B Test chart data error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get chart data'
             ], 500);
         }
     }
-    
+
     private function getEventColor($eventName)
     {
         $colors = [
@@ -380,10 +400,10 @@ class ApiController extends Controller
             'signup' => 'bg-red-500',
             'default' => 'bg-red-400'
         ];
-        
+
         return $colors[$eventName] ?? $colors['default'];
     }
-    
+
     private function formatEventMessage($event)
     {
         $eventMessages = [
@@ -393,10 +413,10 @@ class ApiController extends Controller
             'submit' => "Form submitted in {$event->variant}",
             'signup' => "User signed up in {$event->variant}",
         ];
-        
+
         return $eventMessages[$event->event_name] ?? "Event '{$event->event_name}' in {$event->variant}";
     }
-    
+
     private function getVariantColor($variant)
     {
         $colors = [
@@ -406,16 +426,16 @@ class ApiController extends Controller
             'new_design' => '#7F1D1D',
             'default' => '#6B7280'
         ];
-        
+
         return $colors[$variant] ?? $colors['default'];
     }
-    
+
     private function calculateStatisticalSignificanceForAPI(array $variants): array
     {
         // Find control and test variants
         $control = null;
         $test = null;
-        
+
         foreach ($variants as $variant => $data) {
             if ($variant === 'control') {
                 $control = $data;
@@ -424,7 +444,7 @@ class ApiController extends Controller
                 break;
             }
         }
-        
+
         if (!$control || !$test || $control['participants'] < 30 || $test['participants'] < 30) {
             return [
                 'percentage' => 0,
@@ -438,17 +458,17 @@ class ApiController extends Controller
         $n1 = $control['participants'];
         $x1 = $control['conversions'];
         $p1 = $x1 / $n1;
-        
+
         $n2 = $test['participants'];
         $x2 = $test['conversions'];
         $p2 = $x2 / $n2;
-        
+
         // Pooled proportion
         $p_pool = ($x1 + $x2) / ($n1 + $n2);
-        
+
         // Standard error
-        $se = sqrt($p_pool * (1 - $p_pool) * (1/$n1 + 1/$n2));
-        
+        $se = sqrt($p_pool * (1 - $p_pool) * (1 / $n1 + 1 / $n2));
+
         if ($se == 0) {
             return [
                 'percentage' => 0,
@@ -457,16 +477,16 @@ class ApiController extends Controller
                 'confidence_level' => 'low'
             ];
         }
-        
+
         // Z-score
         $z = abs($p2 - $p1) / $se;
-        
+
         // Convert to p-value (two-tailed test)
         $p_value = 2 * (1 - $this->normalCDF($z));
-        
+
         // Convert to confidence percentage
         $confidence = (1 - $p_value) * 100;
-        
+
         // Determine status and message
         if ($confidence >= 95) {
             $status = 'significant';
@@ -477,7 +497,7 @@ class ApiController extends Controller
             $message = 'Approaching Significance';
             $level = 'medium';
         } elseif ($confidence >= 80) {
-            $status = 'trending';  
+            $status = 'trending';
             $message = 'Trending Towards Significance';
             $level = 'medium';
         } else {
@@ -485,7 +505,7 @@ class ApiController extends Controller
             $message = 'Not Yet Significant';
             $level = 'low';
         }
-        
+
         return [
             'percentage' => round($confidence, 1),
             'status' => $status,
@@ -495,17 +515,26 @@ class ApiController extends Controller
             'z_score' => round($z, 3)
         ];
     }
-    
+
     private function normalCDF($x)
     {
         // Approximation of the cumulative distribution function for standard normal distribution
         $t = 1.0 / (1.0 + 0.2316419 * abs($x));
         $y = $t * (0.319381530 + $t * (-0.356563782 + $t * (1.781477937 + $t * (-1.821255978 + $t * 1.330274429))));
-        
+
         if ($x >= 0) {
             return 1.0 - 0.3989423 * exp(-0.5 * $x * $x) * $y;
         } else {
             return 0.3989423 * exp(-0.5 * $x * $x) * $y;
         }
+    }
+
+    private function resolveDeviceTypeFilter($raw): ?string
+    {
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        return in_array($raw, ['mobile', 'tablet', 'desktop'], true) ? $raw : null;
     }
 }

@@ -71,6 +71,28 @@
                 </div>
             </div>
 
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Device Targeting
+                </label>
+                @php
+                    $oldDevices = old('allowed_device_types', ['mobile', 'tablet', 'desktop']);
+                @endphp
+                <div class="flex flex-wrap gap-4">
+                    @foreach (['mobile' => 'Mobile', 'tablet' => 'Tablet', 'desktop' => 'Desktop'] as $value => $label)
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" name="allowed_device_types[]" value="{{ $value }}"
+                                   {{ in_array($value, $oldDevices) ? 'checked' : '' }}
+                                   class="h-4 w-4 text-blue-600 border-gray-300 rounded">
+                            <span class="ml-2 text-sm text-gray-700">{{ $label }}</span>
+                        </label>
+                    @endforeach
+                </div>
+                <p class="text-sm text-gray-500 mt-2">
+                    Leave all checked to include everyone; uncheck to exclude that device class. Excluded users fall through to the control variant and are not recorded as participants.
+                </p>
+            </div>
+
             <!-- Duration Quick Settings -->
             <div class="bg-blue-50 rounded-lg p-4 mb-4">
                 <h4 class="text-sm font-medium text-gray-700 mb-3">Quick Duration Setup:</h4>
