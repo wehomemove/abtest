@@ -441,4 +441,60 @@ class AbTestServiceTest extends TestCase
         $this->assertIsString($userId);
         $this->assertTrue(Str::isUuid($userId));
     }
+
+    /** @test */
+    public function it_returns_existing_assignment_regardless_of_current_device()
+    {
+        // Reproduces the webhook conversion-tracking regression
+        $experimentId = DB::table('ab_experiments')->insertGetId([
+            'name' => 'mobile_only_exp',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'allowed_device_types' => json_encode(['mobile']),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('ab_user_assignments')->insert([
+            'experiment_id' => $experimentId,
+            'user_id' => 'mobile_user',
+            'variant' => 'variant_b',
+            'device_type' => 'mobile',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Simulate a webhook / desktop request — device gate would otherwise reject.
+        $_SERVER['HTTP_USER_AGENT'] = 'Stripe/1.0 (+https://stripe.com/docs/webhooks)';
+
+        $variant = $this->service->variant('mobile_only_exp', 'mobile_user');
+
+        $this->assertEquals('variant_b', $variant);
+
+        unset($_SERVER['HTTP_USER_AGENT']);
+    }
+
+    /** @test */
+    public function it_still_device_gates_users_without_an_existing_assignment()
+    {
+        DB::table('ab_experiments')->insert([
+            'name' => 'mobile_only_new_user',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'allowed_device_types' => json_encode(['mobile']),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+
+        $variant = $this->service->variant('mobile_only_new_user', 'desktop_user_no_assignment');
+
+        $this->assertEquals('control', $variant);
+        $this->assertDatabaseMissing('ab_user_assignments', [
+            'user_id' => 'desktop_user_no_assignment',
+        ]);
+
+        unset($_SERVER['HTTP_USER_AGENT']);
+    }
 }

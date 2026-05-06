@@ -43,10 +43,26 @@ class AbTestService
             }
         }
 
+        $experimentRow = $this->getExperiment($experimentName);
+
+        // Existing assignment wins over device gating — required so conversions tracked
+        // from server contexts (e.g. Stripe webhooks) return the user's real variant.
+        if ($experimentRow) {
+            $existingVariant = DB::table('ab_user_assignments')
+                ->where('experiment_id', $experimentRow->id)
+                ->where('user_id', $userId)
+                ->value('variant');
+
+            if ($existingVariant !== null) {
+                $this->trackDebugExperiment($experimentName, $existingVariant);
+
+                return $existingVariant;
+            }
+        }
+
         $device = $this->detectDeviceType();
 
-        // Device-type gating: return 'control' without persisting an assignment.
-        $experimentRow = $this->getExperiment($experimentName);
+        // Device gating only applies to NEW users (no existing assignment above).
         if ($experimentRow && !$this->experimentAllowsDevice($experimentRow, $device)) {
             $this->trackDebugExperiment($experimentName, 'control');
 
