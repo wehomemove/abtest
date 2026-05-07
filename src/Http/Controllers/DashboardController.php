@@ -23,7 +23,7 @@ class DashboardController extends Controller
     public function show(Experiment $experiment, Request $request)
     {
         $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
-        $eventFilter = $this->resolveEventFilter($request->query('event_filter'), $experiment);
+        $eventFilter = $this->resolveEventFilter($request->query('event_filter'), $experiment, $deviceType);
         $stats = $this->getExperimentStats($experiment, $deviceType, $eventFilter);
 
         return view('ab-testing::dashboard.show', [
@@ -34,17 +34,19 @@ class DashboardController extends Controller
         ]);
     }
 
-    protected function resolveEventFilter(?string $eventFilter, Experiment $experiment): ?string
+    protected function resolveEventFilter(?string $eventFilter, Experiment $experiment, ?string $deviceType = null): ?string
     {
         if (! $eventFilter || $eventFilter === 'conversion') {
             return null;
         }
 
-        $exists = Event::where('experiment_id', $experiment->id)
-            ->where('event_name', $eventFilter)
-            ->exists();
+        $query = Event::where('experiment_id', $experiment->id)
+            ->where('event_name', $eventFilter);
+        if ($deviceType !== null) {
+            $query->where('device_type', $deviceType);
+        }
 
-        return $exists ? $eventFilter : null;
+        return $query->exists() ? $eventFilter : null;
     }
 
     public function create()
