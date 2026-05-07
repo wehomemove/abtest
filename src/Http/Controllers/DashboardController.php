@@ -230,7 +230,9 @@ class DashboardController extends Controller
 
         // When an event filter is active, the Variant Performance table switches to funnel
         // mode: participants = users who fired $eventFilter, converted = those who also
-        // fired 'conversion'. Top stat cards and chart keep their unfiltered numbers.
+        // fired 'conversion'. Top stat cards, chart, and significance keep their unfiltered
+        // numbers — significance answers "is the variant winning overall" and shouldn't
+        // shift around as the user explores the funnel filter.
         $variantAssigned = $assignments;
         $variantConverted = $conversions;
 
@@ -246,11 +248,16 @@ class DashboardController extends Controller
                 ->pluck('count', 'variant')
                 ->toArray();
 
+            $filterUserIdsQuery = Event::where('experiment_id', $experiment->id)
+                ->where('event_name', $eventFilter)
+                ->select('user_id');
+            if ($deviceType !== null) {
+                $filterUserIdsQuery->where('device_type', $deviceType);
+            }
+
             $filteredConvertedQuery = Event::where('experiment_id', $experiment->id)
                 ->where('event_name', 'conversion')
-                ->whereIn('user_id', Event::where('experiment_id', $experiment->id)
-                    ->where('event_name', $eventFilter)
-                    ->select('user_id'));
+                ->whereIn('user_id', $filterUserIdsQuery);
             if ($deviceType !== null) {
                 $filteredConvertedQuery->where('device_type', $deviceType);
             }
@@ -310,8 +317,20 @@ class DashboardController extends Controller
             ->distinct('user_id')
             ->count();
 
-        // Calculate statistical significance
-        $significance = $this->calculateStatisticalSignificance($stats);
+        // Significance is computed against the unfiltered counts so the live-polled
+        // value doesn't disagree with the headline question (does the variant win overall).
+        $unfilteredVariantStats = [];
+        foreach ($experiment->variants as $variant => $weight) {
+            $assigned = $assignments[$variant] ?? 0;
+            $converted = $conversions[$variant] ?? 0;
+            $unfilteredVariantStats[$variant] = [
+                'weight' => $weight,
+                'assigned' => $assigned,
+                'converted' => $converted,
+                'conversion_rate' => $assigned > 0 ? round(($converted / $assigned) * 100, 2) : 0,
+            ];
+        }
+        $significance = $this->calculateStatisticalSignificance($unfilteredVariantStats);
 
         return [
             'variants' => $stats,

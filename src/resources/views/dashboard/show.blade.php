@@ -263,12 +263,13 @@ This compares conversion rates between Control vs Test groups to determine if th
                     $variantChartEventNames = array_values(array_filter($variantChartEventNames, fn ($n) => $n !== 'conversion'));
                     array_unshift($variantChartEventNames, 'conversion');
                 }
+                $initialChartEvent = $variantChartEventNames[0] ?? 'conversion';
             @endphp
             <select id="variant-chart-event"
                     class="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
                     onchange="updateVariantChart(this.value)">
                 @forelse($variantChartEventNames as $eventName)
-                    <option value="{{ $eventName }}" {{ $eventName === 'conversion' ? 'selected' : '' }}>
+                    <option value="{{ $eventName }}" {{ $eventName === $initialChartEvent ? 'selected' : '' }}>
                         {{ ucfirst(str_replace(['_', '-'], ' ', $eventName)) }}
                     </option>
                 @empty
@@ -282,6 +283,7 @@ This compares conversion rates between Control vs Test groups to determine if th
         <script>
         window.variantChartEventCounts = @json($stats['event_counts_by_name'] ?? new \stdClass);
         window.variantChartVariantNames = @json(array_keys($stats['variants']));
+        window.variantChartInitialEvent = @json($initialChartEvent);
 
         function updateVariantChart(eventName) {
             if (!window.variantChartInstance) return;
@@ -294,7 +296,7 @@ This compares conversion rates between Control vs Test groups to determine if th
         document.addEventListener('DOMContentLoaded', function() {
             const variantCtx = document.getElementById('variantChart').getContext('2d');
             const variantNames = window.variantChartVariantNames;
-            const initialCounts = window.variantChartEventCounts['conversion'] || {};
+            const initialCounts = window.variantChartEventCounts[window.variantChartInitialEvent] || {};
             const initialData = variantNames.map(v => initialCounts[v] || 0);
             const variantColors = ['#6B7280', '#DC2626', '#10B981', '#F59E0B'];
 
