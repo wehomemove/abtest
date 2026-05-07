@@ -23,13 +23,30 @@ class DashboardController extends Controller
     public function show(Experiment $experiment, Request $request)
     {
         $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
-        $stats = $this->getExperimentStats($experiment, $deviceType);
+        $eventFilter = $this->resolveEventFilter($request->query('event_filter'), $experiment, $deviceType);
+        $stats = $this->getExperimentStats($experiment, $deviceType, $eventFilter);
 
         return view('ab-testing::dashboard.show', [
             'experiment' => $experiment,
             'stats' => $stats,
             'activeDeviceType' => $deviceType,
+            'activeEventFilter' => $eventFilter,
         ]);
+    }
+
+    protected function resolveEventFilter(?string $eventFilter, Experiment $experiment, ?string $deviceType = null): ?string
+    {
+        if (! $eventFilter || $eventFilter === 'conversion') {
+            return null;
+        }
+
+        $query = Event::where('experiment_id', $experiment->id)
+            ->where('event_name', $eventFilter);
+        if ($deviceType !== null) {
+            $query->where('device_type', $deviceType);
+        }
+
+        return $query->exists() ? $eventFilter : null;
     }
 
     public function create()
@@ -128,7 +145,7 @@ class DashboardController extends Controller
         return back()->with('success', 'Experiment status updated!');
     }
 
-    protected function getExperimentStats(Experiment $experiment, ?string $deviceType = null): array
+    protected function getExperimentStats(Experiment $experiment, ?string $deviceType = null, ?string $eventFilter = null): array
     {
         // Get assignment counts by variant
         $assignmentQuery = UserAssignment::where('experiment_id', $experiment->id);
@@ -151,6 +168,19 @@ class DashboardController extends Controller
             ->selectRaw('variant, COUNT(DISTINCT user_id) as count')
             ->groupBy('variant')
             ->pluck('count', 'variant')
+            ->toArray();
+
+        // Per-event counts by variant — powers the variant-chart event dropdown.
+        $eventCountsQuery = Event::where('experiment_id', $experiment->id);
+        if ($deviceType !== null) {
+            $eventCountsQuery->where('device_type', $deviceType);
+        }
+        $eventCountsByName = $eventCountsQuery
+            ->selectRaw('event_name, variant, COUNT(DISTINCT user_id) as count')
+            ->groupBy('event_name', 'variant')
+            ->get()
+            ->groupBy('event_name')
+            ->map(fn ($rows) => $rows->pluck('count', 'variant')->toArray())
             ->toArray();
 
         // Get user-organized event data
@@ -200,11 +230,50 @@ class DashboardController extends Controller
             ->sortByDesc('last_activity')
             ->values();
 
-        // Calculate stats for each variant
+        // When an event filter is active, the Variant Performance table switches to funnel
+        // mode: participants = users who fired $eventFilter, converted = those who also
+        // fired 'conversion'. Top stat cards, chart, and significance keep their unfiltered
+        // numbers — significance answers "is the variant winning overall" and shouldn't
+        // shift around as the user explores the funnel filter.
+        $variantAssigned = $assignments;
+        $variantConverted = $conversions;
+
+        if ($eventFilter !== null) {
+            $filteredAssignedQuery = Event::where('experiment_id', $experiment->id)
+                ->where('event_name', $eventFilter);
+            if ($deviceType !== null) {
+                $filteredAssignedQuery->where('device_type', $deviceType);
+            }
+            $variantAssigned = (clone $filteredAssignedQuery)
+                ->selectRaw('variant, COUNT(DISTINCT user_id) as count')
+                ->groupBy('variant')
+                ->pluck('count', 'variant')
+                ->toArray();
+
+            $filterUserIdsQuery = Event::where('experiment_id', $experiment->id)
+                ->where('event_name', $eventFilter)
+                ->select('user_id');
+            if ($deviceType !== null) {
+                $filterUserIdsQuery->where('device_type', $deviceType);
+            }
+
+            $filteredConvertedQuery = Event::where('experiment_id', $experiment->id)
+                ->where('event_name', 'conversion')
+                ->whereIn('user_id', $filterUserIdsQuery);
+            if ($deviceType !== null) {
+                $filteredConvertedQuery->where('device_type', $deviceType);
+            }
+            $variantConverted = $filteredConvertedQuery
+                ->selectRaw('variant, COUNT(DISTINCT user_id) as count')
+                ->groupBy('variant')
+                ->pluck('count', 'variant')
+                ->toArray();
+        }
+
         $stats = [];
         foreach ($experiment->variants as $variant => $weight) {
-            $assigned = $assignments[$variant] ?? 0;
-            $converted = $conversions[$variant] ?? 0;
+            $assigned = $variantAssigned[$variant] ?? 0;
+            $converted = $variantConverted[$variant] ?? 0;
             $rate = $assigned > 0 ? round(($converted / $assigned) * 100, 2) : 0;
 
             $stats[$variant] = [
@@ -250,8 +319,20 @@ class DashboardController extends Controller
             ->distinct('user_id')
             ->count();
 
-        // Calculate statistical significance
-        $significance = $this->calculateStatisticalSignificance($stats);
+        // Significance is computed against the unfiltered counts so the live-polled
+        // value doesn't disagree with the headline question (does the variant win overall).
+        $unfilteredVariantStats = [];
+        foreach ($experiment->variants as $variant => $weight) {
+            $assigned = $assignments[$variant] ?? 0;
+            $converted = $conversions[$variant] ?? 0;
+            $unfilteredVariantStats[$variant] = [
+                'weight' => $weight,
+                'assigned' => $assigned,
+                'converted' => $converted,
+                'conversion_rate' => $assigned > 0 ? round(($converted / $assigned) * 100, 2) : 0,
+            ];
+        }
+        $significance = $this->calculateStatisticalSignificance($unfilteredVariantStats);
 
         return [
             'variants' => $stats,
@@ -264,6 +345,7 @@ class DashboardController extends Controller
             'today_assignments' => $todayAssignments,
             'today_conversions' => $todayConversions,
             'statistical_significance' => $significance,
+            'event_counts_by_name' => $eventCountsByName,
         ];
     }
 

@@ -176,8 +176,25 @@ This compares conversion rates between Control vs Test groups to determine if th
 </div>
 
 <div class="bg-white shadow rounded mb-8">
-    <div class="px-6 py-4 border-b border-gray-200">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
         <h3 class="text-lg font-medium text-gray-900">Variant Performance</h3>
+        @php
+            $variantTableEventFilters = array_values(array_filter(
+                array_keys($stats['event_counts_by_name'] ?? []),
+                fn ($name) => $name !== 'conversion',
+            ));
+            sort($variantTableEventFilters);
+        @endphp
+        <select id="variant-table-event-filter"
+                class="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                onchange="handleEventFilterChange(this.value)">
+            <option value="">All participants</option>
+            @foreach($variantTableEventFilters as $eventName)
+                <option value="{{ $eventName }}" {{ ($activeEventFilter ?? null) === $eventName ? 'selected' : '' }}>
+                    Hit {{ str_replace(['_', '-'], ' ', $eventName) }}
+                </option>
+            @endforeach
+        </select>
     </div>
     <div class="p-6">
         <div class="overflow-x-auto">
@@ -233,29 +250,62 @@ This compares conversion rates between Control vs Test groups to determine if th
 
     <!-- Variant Performance -->
     <div class="bg-white rounded shadow-lg p-6 hover:shadow-xl transition-all duration-300">
-        <h3 class="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-            Variant Performance
-            <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
-               title="Distribution of conversions across all variants"></i>
-        </h3>
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-semibold text-gray-900 flex items-center">
+                Variant Performance
+                <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
+                   title="Distribution of the selected event across all variants"></i>
+            </h3>
+            @php
+                $variantChartEventNames = array_keys($stats['event_counts_by_name'] ?? []);
+                sort($variantChartEventNames);
+                if (in_array('conversion', $variantChartEventNames, true)) {
+                    $variantChartEventNames = array_values(array_filter($variantChartEventNames, fn ($n) => $n !== 'conversion'));
+                    array_unshift($variantChartEventNames, 'conversion');
+                }
+                $initialChartEvent = $variantChartEventNames[0] ?? 'conversion';
+            @endphp
+            <select id="variant-chart-event"
+                    class="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                    onchange="updateVariantChart(this.value)">
+                @forelse($variantChartEventNames as $eventName)
+                    <option value="{{ $eventName }}" {{ $eventName === $initialChartEvent ? 'selected' : '' }}>
+                        {{ ucfirst(str_replace(['_', '-'], ' ', $eventName)) }}
+                    </option>
+                @empty
+                    <option value="conversion">Conversion</option>
+                @endforelse
+            </select>
+        </div>
         <div class="relative h-64">
             <canvas id="variantChart"></canvas>
         </div>
         <script>
-        // Initialize variant performance chart
+        window.variantChartEventCounts = @json($stats['event_counts_by_name'] ?? new \stdClass);
+        window.variantChartVariantNames = @json(array_keys($stats['variants']));
+        window.variantChartInitialEvent = @json($initialChartEvent);
+
+        function updateVariantChart(eventName) {
+            if (!window.variantChartInstance) return;
+            const counts = window.variantChartEventCounts[eventName] || {};
+            window.variantChartInstance.data.datasets[0].data =
+                window.variantChartVariantNames.map(v => counts[v] || 0);
+            window.variantChartInstance.update();
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             const variantCtx = document.getElementById('variantChart').getContext('2d');
-            const variants = @json($stats['variants']);
-            const variantNames = Object.keys(variants);
-            const conversionData = variantNames.map(variant => variants[variant].converted);
+            const variantNames = window.variantChartVariantNames;
+            const initialCounts = window.variantChartEventCounts[window.variantChartInitialEvent] || {};
+            const initialData = variantNames.map(v => initialCounts[v] || 0);
             const variantColors = ['#6B7280', '#DC2626', '#10B981', '#F59E0B'];
 
-            new Chart(variantCtx, {
+            window.variantChartInstance = new Chart(variantCtx, {
                 type: 'doughnut',
                 data: {
                     labels: variantNames.map(v => v.charAt(0).toUpperCase() + v.slice(1).replace('_', ' ')),
                     datasets: [{
-                        data: conversionData,
+                        data: initialData,
                         backgroundColor: variantColors,
                         borderWidth: 2,
                         borderColor: '#fff'
@@ -429,6 +479,16 @@ function handleDeviceFilterChange(value) {
         url.searchParams.set('device_type', value);
     } else {
         url.searchParams.delete('device_type');
+    }
+    window.location.href = url.toString();
+}
+
+function handleEventFilterChange(value) {
+    const url = new URL(window.location.href);
+    if (value) {
+        url.searchParams.set('event_filter', value);
+    } else {
+        url.searchParams.delete('event_filter');
     }
     window.location.href = url.toString();
 }
