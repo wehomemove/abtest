@@ -60,6 +60,19 @@ class AbTestService
             }
         }
 
+        // Exclude bots/crawlers from NEW assignments. They render JS, hit the
+        // variant endpoint on page-load, get bucketed as 'desktop' by device
+        // detection (isRobot falls through isMobile/isTablet), and then never
+        // fire an event — inflating the population, skewing device mix to
+        // desktop, and diluting the control's conversion rate into a
+        // manufactured "lift". An existing (human) assignment above still wins;
+        // bots simply never enter ab_user_assignments.
+        if ($this->isBot()) {
+            $this->trackDebugExperiment($experimentName, 'control');
+
+            return 'control';
+        }
+
         $device = $this->detectDeviceType();
 
         // Device gating only applies to NEW users (no existing assignment above).
@@ -85,6 +98,29 @@ class AbTestService
      * Returns 'mobile' | 'tablet' | 'desktop', or null when no user-agent is present
      * (e.g. CLI / queue worker).
      */
+    /**
+     * True when the current request's user-agent is a known bot/crawler.
+     *
+     * Bots must never be ASSIGNED into an experiment — they load the page but
+     * never convert, so they only dilute the sample and skew the device mix.
+     * An empty user-agent (server-side call: CLI, queue, Stripe webhook tracking
+     * a real user's conversion) is NOT treated as a bot, so those paths keep
+     * resolving the user's existing assignment.
+     */
+    protected function isBot(): bool
+    {
+        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
+
+        if (empty($userAgent)) {
+            return false;
+        }
+
+        $agent = new Agent;
+        $agent->setUserAgent($userAgent);
+
+        return $agent->isRobot();
+    }
+
     protected function detectDeviceType(): ?string
     {
         $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
@@ -198,6 +234,13 @@ class AbTestService
         $experiment = $this->getExperiment($experimentName);
 
         if (!$experiment || !$experiment->is_active) {
+            return 'control';
+        }
+
+        // Belt-and-braces: never record an assignment for a bot, even if this is
+        // reached outside variant() (the primary gate). Mirrors the early return
+        // there so ab_user_assignments only ever holds real, human traffic.
+        if ($this->isBot()) {
             return 'control';
         }
 

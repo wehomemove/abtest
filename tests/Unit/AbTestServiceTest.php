@@ -48,6 +48,71 @@ class AbTestServiceTest extends TestCase
     }
 
     /** @test */
+    public function it_does_not_assign_bots_but_still_returns_control()
+    {
+        $experimentId = DB::table('ab_experiments')->insertGetId([
+            'name' => 'bot_test',
+            'variants' => json_encode(['control' => 50, 'variant_a' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $originalUa = $_SERVER['HTTP_USER_AGENT'] ?? null;
+        $_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+
+        try {
+            $variant = $this->service->variant('bot_test', 'bot_user_1');
+
+            // A bot sees the page (control) but is NEVER recorded as a participant —
+            // otherwise event-less crawler loads dilute the sample and skew device mix.
+            $this->assertSame('control', $variant);
+            $this->assertDatabaseMissing('ab_user_assignments', [
+                'experiment_id' => $experimentId,
+                'user_id' => 'bot_user_1',
+            ]);
+        } finally {
+            if ($originalUa === null) {
+                unset($_SERVER['HTTP_USER_AGENT']);
+            } else {
+                $_SERVER['HTTP_USER_AGENT'] = $originalUa;
+            }
+        }
+    }
+
+    /** @test */
+    public function it_still_assigns_a_real_browser_user_agent()
+    {
+        $experimentId = DB::table('ab_experiments')->insertGetId([
+            'name' => 'human_test',
+            'variants' => json_encode(['control' => 50, 'variant_a' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $originalUa = $_SERVER['HTTP_USER_AGENT'] ?? null;
+        $_SERVER['HTTP_USER_AGENT'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
+            .'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
+        try {
+            $variant = $this->service->variant('human_test', 'human_user_1');
+
+            $this->assertContains($variant, ['control', 'variant_a']);
+            $this->assertDatabaseHas('ab_user_assignments', [
+                'experiment_id' => $experimentId,
+                'user_id' => 'human_user_1',
+            ]);
+        } finally {
+            if ($originalUa === null) {
+                unset($_SERVER['HTTP_USER_AGENT']);
+            } else {
+                $_SERVER['HTTP_USER_AGENT'] = $originalUa;
+            }
+        }
+    }
+
+    /** @test */
     public function it_returns_control_for_inactive_experiment()
     {
         DB::table('ab_experiments')->insert([
