@@ -5,6 +5,7 @@ namespace Homemove\AbTesting\Http\Controllers;
 use Homemove\AbTesting\Facades\AbTest;
 use Homemove\AbTesting\Models\Event;
 use Homemove\AbTesting\Models\Experiment;
+use Homemove\AbTesting\Support\Statistics;
 use Homemove\AbTesting\Models\UserAssignment;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -332,7 +333,45 @@ class DashboardController extends Controller
                 'conversion_rate' => $assigned > 0 ? round(($converted / $assigned) * 100, 2) : 0,
             ];
         }
-        $significance = $this->calculateStatisticalSignificance($unfilteredVariantStats);
+        // Every non-control arm is tested against control — a four-arm test
+        // whose significance card only ever looked at the first variant told
+        // you nothing about the other two.
+        $control = $unfilteredVariantStats['control'] ?? null;
+        $significanceByVariant = [];
+        foreach ($unfilteredVariantStats as $variant => $data) {
+            if ($variant === 'control' || !$control) {
+                continue;
+            }
+            $significanceByVariant[$variant] = Statistics::twoProportionZTest(
+                $control['assigned'],
+                $control['converted'],
+                $data['assigned'],
+                $data['converted'],
+            );
+        }
+
+        // Headline = the arm with the highest confidence, named, so the card
+        // can say WHICH variant it is talking about.
+        $headlineVariant = null;
+        foreach ($significanceByVariant as $variant => $result) {
+            if ($headlineVariant === null
+                || ($result['percentage'] ?? 0) > ($significanceByVariant[$headlineVariant]['percentage'] ?? 0)) {
+                $headlineVariant = $variant;
+            }
+        }
+        $significance = $headlineVariant !== null
+            ? array_merge($significanceByVariant[$headlineVariant], ['variant' => $headlineVariant])
+            : [
+                'percentage' => 0,
+                'status' => 'insufficient_data',
+                'message' => 'Need a control and at least one variant',
+                'confidence_level' => 'low',
+            ];
+
+        // Real day-over-day movement of the cumulative conversion rate (in
+        // percentage points) — replaces a hardcoded placeholder in the view.
+        // Cumulative-vs-cumulative: daily-vs-daily is noise at small samples.
+        $rateChangePp = $this->cumulativeRateChangePp($experiment, $deviceType);
 
         return [
             'variants' => $stats,
@@ -345,110 +384,51 @@ class DashboardController extends Controller
             'today_assignments' => $todayAssignments,
             'today_conversions' => $todayConversions,
             'statistical_significance' => $significance,
+            'significance_by_variant' => $significanceByVariant,
+            'rate_change_pp' => $rateChangePp,
             'event_counts_by_name' => $eventCountsByName,
         ];
     }
 
-    protected function calculateStatisticalSignificance(array $stats): array
+    /**
+     * Percentage-point change of the cumulative conversion rate vs where it
+     * stood at the start of today. Null when yesterday had no participants.
+     */
+    protected function cumulativeRateChangePp(Experiment $experiment, ?string $deviceType): ?float
     {
-        // Find control and test variants
-        $control = null;
-        $test = null;
+        $todayStart = now()->startOfDay();
 
-        foreach ($stats as $variant => $data) {
-            if ($variant === 'control') {
-                $control = $data;
-            } else {
-                $test = $data; // Use first non-control variant
-                break;
-            }
+        $assignedBefore = UserAssignment::where('experiment_id', $experiment->id)
+            ->where('created_at', '<', $todayStart)
+            ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
+            ->count();
+
+        if ($assignedBefore === 0) {
+            return null;
         }
 
-        if (!$control || !$test || $control['assigned'] < 30 || $test['assigned'] < 30) {
-            return [
-                'percentage' => 0,
-                'status' => 'insufficient_data',
-                'message' => 'Need at least 30 participants per variant',
-                'confidence_level' => 'low'
-            ];
-        }
+        $convertedBefore = Event::where('experiment_id', $experiment->id)
+            ->where('event_name', 'conversion')
+            ->where('created_at', '<', $todayStart)
+            ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
+            ->distinct('user_id')
+            ->count();
 
-        // Two-proportion z-test
-        $n1 = $control['assigned'];
-        $x1 = $control['converted'];
-        $p1 = $x1 / $n1;
+        $assignedNow = UserAssignment::where('experiment_id', $experiment->id)
+            ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
+            ->count();
+        $convertedNow = Event::where('experiment_id', $experiment->id)
+            ->where('event_name', 'conversion')
+            ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
+            ->distinct('user_id')
+            ->count();
 
-        $n2 = $test['assigned'];
-        $x2 = $test['converted'];
-        $p2 = $x2 / $n2;
+        $before = ($convertedBefore / $assignedBefore) * 100;
+        $now = $assignedNow > 0 ? ($convertedNow / $assignedNow) * 100 : 0.0;
 
-        // Pooled proportion
-        $p_pool = ($x1 + $x2) / ($n1 + $n2);
-
-        // Standard error
-        $se = sqrt($p_pool * (1 - $p_pool) * (1 / $n1 + 1 / $n2));
-
-        if ($se == 0) {
-            return [
-                'percentage' => 0,
-                'status' => 'no_difference',
-                'message' => 'No measurable difference',
-                'confidence_level' => 'low'
-            ];
-        }
-
-        // Z-score
-        $z = abs($p2 - $p1) / $se;
-
-        // Convert to p-value (two-tailed test)
-        $p_value = 2 * (1 - $this->normalCDF($z));
-
-        // Convert to confidence percentage
-        $confidence = (1 - $p_value) * 100;
-
-        // Determine status and message
-        if ($confidence >= 95) {
-            $status = 'significant';
-            $message = 'Statistically Significant';
-            $level = 'high';
-        } elseif ($confidence >= 90) {
-            $status = 'approaching';
-            $message = 'Approaching Significance';
-            $level = 'medium';
-        } elseif ($confidence >= 80) {
-            $status = 'trending';
-            $message = 'Trending Towards Significance';
-            $level = 'medium';
-        } else {
-            $status = 'not_significant';
-            $message = 'Not Yet Significant';
-            $level = 'low';
-        }
-
-        return [
-            'percentage' => round($confidence, 1),
-            'status' => $status,
-            'message' => $message,
-            'confidence_level' => $level,
-            'p_value' => round($p_value, 4),
-            'z_score' => round($z, 3),
-            'sample_sizes' => ['control' => $n1, 'test' => $n2]
-        ];
+        return round($now - $before, 2);
     }
 
-    private function normalCDF($x)
-    {
-        // Approximation of the cumulative distribution function for standard normal distribution
-        // Using Abramowitz and Stegun approximation
-        $t = 1.0 / (1.0 + 0.2316419 * abs($x));
-        $y = $t * (0.319381530 + $t * (-0.356563782 + $t * (1.781477937 + $t * (-1.821255978 + $t * 1.330274429))));
-
-        if ($x >= 0) {
-            return 1.0 - 0.3989423 * exp(-0.5 * $x * $x) * $y;
-        } else {
-            return 0.3989423 * exp(-0.5 * $x * $x) * $y;
-        }
-    }
 
     /**
      * Normalise submitted device-type selection. All three selected (or empty) collapses

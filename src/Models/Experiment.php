@@ -3,6 +3,7 @@
 namespace Homemove\AbTesting\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Homemove\AbTesting\Support\Statistics;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Experiment extends Model
@@ -112,16 +113,17 @@ class Experiment extends Model
             ];
         }
 
-        // Two-proportion z-test
-        $p1 = $controlStats['conversions'] / $controlStats['total'];
-        $p2 = $variantStats['conversions'] / $variantStats['total'];
-        $pooledP = ($controlStats['conversions'] + $variantStats['conversions']) /
-                   ($controlStats['total'] + $variantStats['total']);
+        // Shared maths (Statistics); this method keeps its historical return
+        // shape, its configurable confidence_level threshold, and a SIGNED z.
+        $result = Statistics::twoProportionZTest(
+            (int) $controlStats['total'],
+            (int) $controlStats['conversions'],
+            (int) $variantStats['total'],
+            (int) $variantStats['conversions'],
+            1
+        );
 
-        $se = sqrt($pooledP * (1 - $pooledP) *
-                  ((1 / $controlStats['total']) + (1 / $variantStats['total'])));
-
-        if ($se == 0) {
+        if (($result['status'] ?? '') === 'no_difference') {
             return [
                 'significant' => false,
                 'confidence' => 0,
@@ -130,17 +132,17 @@ class Experiment extends Model
             ];
         }
 
-        $z = ($p2 - $p1) / $se;
-        $pValue = 2 * (1 - $this->normalCDF(abs($z)));
+        $p1 = $controlStats['conversions'] / $controlStats['total'];
+        $p2 = $variantStats['conversions'] / $variantStats['total'];
+        $signedZ = ($p2 >= $p1 ? 1 : -1) * $result['z_score'];
 
-        $isSignificant = $pValue < (1 - ($this->confidence_level / 100));
-        $confidence = (1 - $pValue) * 100;
+        $isSignificant = $result['p_value'] < (1 - ($this->confidence_level / 100));
 
         return [
             'significant' => $isSignificant,
-            'confidence' => round($confidence, 2),
-            'p_value' => round($pValue, 4),
-            'z_score' => round($z, 3),
+            'confidence' => round((1 - $result['p_value']) * 100, 2),
+            'p_value' => $result['p_value'],
+            'z_score' => $signedZ,
             'message' => $isSignificant ?
                 "Statistically significant at {$this->confidence_level}% confidence" :
                 'Not statistically significant'
@@ -163,30 +165,6 @@ class Experiment extends Model
         ];
     }
 
-    private function normalCDF($x): float
-    {
-        // Approximation of the cumulative distribution function for standard normal
-        return 0.5 * (1 + $this->erf($x / sqrt(2)));
-    }
-
-    private function erf($x): float
-    {
-        // Approximation of the error function
-        $a1 = 0.254829592;
-        $a2 = -0.284496736;
-        $a3 = 1.421413741;
-        $a4 = -1.453152027;
-        $a5 = 1.061405429;
-        $p = 0.3275911;
-
-        $sign = $x < 0 ? -1 : 1;
-        $x = abs($x);
-
-        $t = 1.0 / (1.0 + $p * $x);
-        $y = 1.0 - (((($a5 * $t + $a4) * $t + $a3) * $t + $a2) * $t + $a1) * $t * exp(-$x * $x);
-
-        return $sign * $y;
-    }
 
     public function canRunInApplication($app): bool
     {

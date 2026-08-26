@@ -11,7 +11,7 @@
             <h1 class="text-3xl font-bold mb-2">{{ $experiment->name }}</h1>
             <p class="text-gray-100 text-lg">{{ $experiment->description }}</p>
             <div class="flex items-center mt-3 space-x-4 flex-wrap">
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ $experiment->is_active ? 'bg-red-500 text-white' : 'bg-red-500 text-white' }}">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ $experiment->is_active ? 'bg-green-600 text-white' : 'bg-gray-500 text-white' }}">
                     <div class="w-2 h-2 rounded-full mr-2 {{ $experiment->is_active ? 'bg-green-300' : 'bg-red-300' }}"></div>
                     {{ $experiment->is_active ? 'Active' : 'Paused' }}
                 </span>
@@ -46,7 +46,7 @@
             <form action="{{ route('ab-testing.dashboard.toggle', $experiment) }}" method="POST" class="inline">
                 @csrf
                 @method('PATCH')
-                <button type="submit" class="px-6 py-3 rounded font-medium transition-all duration-200 transform hover:scale-105 {{ $experiment->is_active ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-red-500 hover:bg-red-600 text-white' }}">
+                <button type="submit" class="px-6 py-3 rounded font-medium transition-all duration-200 transform hover:scale-105 {{ $experiment->is_active ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-green-600 hover:bg-green-700 text-white' }}">
                     {{ $experiment->is_active ? 'Pause' : 'Activate' }}
                 </button>
             </form>
@@ -124,10 +124,14 @@
                 {{ $stats['total_assignments'] > 0 ? number_format(($stats['total_conversions'] / $stats['total_assignments']) * 100, 2) : 0 }}%
             </div>
             <div class="flex items-center">
-                <span class="text-xs font-medium text-green-500" id="rate-trend">
-                    <i class="fas fa-arrow-up"></i>
-                    <span id="rate-change">2.3</span>% vs yesterday
-                </span>
+                @if(($stats['rate_change_pp'] ?? null) === null)
+                    <span class="text-xs font-medium text-gray-400" id="rate-trend">No prior-day data yet</span>
+                @else
+                    <span class="text-xs font-medium {{ $stats['rate_change_pp'] > 0 ? 'text-green-500' : ($stats['rate_change_pp'] < 0 ? 'text-red-500' : 'text-gray-400') }}" id="rate-trend">
+                        <i class="fas {{ $stats['rate_change_pp'] > 0 ? 'fa-arrow-up' : ($stats['rate_change_pp'] < 0 ? 'fa-arrow-down' : 'fa-minus') }}"></i>
+                        <span id="rate-change">{{ number_format(abs($stats['rate_change_pp']), 2) }}</span>pp vs start of today
+                    </span>
+                @endif
             </div>
         </div>
     </div>
@@ -140,24 +144,14 @@
                 <h3 class="text-sm font-medium text-gray-600 flex items-center">
                     Significance
                     <i class="fas fa-info-circle text-gray-400 ml-1 text-xs cursor-help"
-                       title="📊 How Statistical Significance Works:
+                       title="📊 Two-proportion z-test, best-performing arm ({{ $stats['statistical_significance']['variant'] ?? 'n/a' }}) vs control.
 
-🔬 Method: Two-Proportion Z-Test
-This compares conversion rates between Control vs Test groups to determine if the difference is real or just random chance.
+Control: {{ $stats['variants']['control']['converted'] ?? 0 }}/{{ $stats['variants']['control']['assigned'] ?? 0 }} = {{ $stats['variants']['control']['conversion_rate'] ?? 0 }}%
+{{ $stats['statistical_significance']['variant'] ?? 'variant' }}: {{ $stats['variants'][$stats['statistical_significance']['variant'] ?? '']['converted'] ?? 0 }}/{{ $stats['variants'][$stats['statistical_significance']['variant'] ?? '']['assigned'] ?? 0 }} = {{ $stats['variants'][$stats['statistical_significance']['variant'] ?? '']['conversion_rate'] ?? 0 }}%
+Z-Score: {{ $stats['statistical_significance']['z_score'] ?? 'N/A' }} · P-Value: {{ $stats['statistical_significance']['p_value'] ?? 'N/A' }}
 
-📈 The Calculation:
-1. Control Rate: {{ $stats['variants']['control']['converted'] ?? 0 }}/{{ $stats['variants']['control']['assigned'] ?? 0 }} = {{ $stats['variants']['control']['conversion_rate'] ?? 0 }}%
-2. Test Rate: {{ collect($stats['variants'])->where('variants', '!=', 'control')->first()['converted'] ?? 0 }}/{{ collect($stats['variants'])->where('variants', '!=', 'control')->first()['assigned'] ?? 0 }} = {{ collect($stats['variants'])->except('control')->first()['conversion_rate'] ?? 0 }}%
-3. Z-Score: {{ $stats['statistical_significance']['z_score'] ?? 'N/A' }} (measures how many standard deviations apart the rates are)
-4. P-Value: {{ $stats['statistical_significance']['p_value'] ?? 'N/A' }} (probability this difference happened by chance)
-
-✅ Confidence Levels:
-• 95%+ = Statistically Significant (< 5% chance it's random)
-• 90-94% = Approaching Significance
-• 80-89% = Trending Towards Significance
-• < 80% = Not Yet Significant (need more data)
-
-📊 Current: {{ $stats['statistical_significance']['percentage'] ?? 0 }}% confident this difference is real"></i>
+✅ 95%+ significant · 90–94% approaching · 80–89% trending · <80% not yet.
+Each arm's own confidence vs control is in the table below."></i>
                 </h3>
                 <div class="text-purple-500">
                     <i class="fas fa-flask text-xl"></i>
@@ -168,7 +162,7 @@ This compares conversion rates between Control vs Test groups to determine if th
             </div>
             <div class="flex items-center">
                 <span class="text-xs font-medium {{ $stats['statistical_significance']['confidence_level'] === 'high' ? 'text-green-500' : ($stats['statistical_significance']['confidence_level'] === 'medium' ? 'text-yellow-500' : 'text-red-500') }}" id="significance-status">
-                    <span id="significance-message">{{ $stats['statistical_significance']['message'] }}</span>
+                    <span id="significance-message">{{ $stats['statistical_significance']['message'] }}@isset($stats['statistical_significance']['variant']) · {{ $stats['statistical_significance']['variant'] }}@endisset</span>
                 </span>
             </div>
         </div>
@@ -197,6 +191,12 @@ This compares conversion rates between Control vs Test groups to determine if th
         </select>
     </div>
     <div class="p-6">
+        @if($activeEventFilter ?? null)
+            <div class="mb-4 flex items-center gap-2 rounded bg-yellow-50 border border-yellow-200 px-3 py-2 text-sm text-yellow-800">
+                <i class="fas fa-filter text-yellow-500"></i>
+                Showing users who hit <strong>{{ str_replace(['_', '-'], ' ', $activeEventFilter) }}</strong> — the headline cards above remain unfiltered.
+            </div>
+        @endif
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead>
@@ -207,6 +207,7 @@ This compares conversion rates between Control vs Test groups to determine if th
                         <th class="pb-3">Conversions</th>
                         <th class="pb-3">Conv. Rate</th>
                         <th class="pb-3">Lift</th>
+                        <th class="pb-3">Confidence</th>
                     </tr>
                 </thead>
                 <tbody class="space-y-2">
@@ -230,8 +231,20 @@ This compares conversion rates between Control vs Test groups to determine if th
                                     @php
                                         $lift = (($data['conversion_rate'] - $controlRate) / $controlRate) * 100;
                                     @endphp
-                                    <span class="font-medium {{ $lift > 0 ? 'text-red-600' : 'text-red-600' }}">
+                                    <span class="font-medium {{ $lift > 0 ? 'text-green-600' : ($lift < 0 ? 'text-red-600' : 'text-gray-500') }}">
                                         {{ $lift > 0 ? '+' : '' }}{{ number_format($lift, 1) }}%
+                                    </span>
+                                @else
+                                    <span class="text-gray-400">-</span>
+                                @endif
+                            </td>
+                            <td class="py-3">
+                                @php $sig = $stats['significance_by_variant'][$variant] ?? null; @endphp
+                                @if($sig)
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                        {{ $sig['confidence_level'] === 'high' ? 'bg-green-100 text-green-700' : ($sig['confidence_level'] === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500') }}"
+                                        title="{{ $sig['message'] }} (p = {{ $sig['p_value'] ?? 'n/a' }})">
+                                        {{ $sig['percentage'] }}%
                                     </span>
                                 @else
                                     <span class="text-gray-400">-</span>

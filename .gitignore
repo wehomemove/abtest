@@ -8,4 +8,4 @@ composer.lock
 node_modules/
 .phpunit.result.cache
 storage/
-bootstrap/cache/
+bootstrap/cache/.phpunit.cache/

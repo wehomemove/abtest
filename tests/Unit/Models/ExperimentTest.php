@@ -395,24 +395,11 @@ class ExperimentTest extends TestCase
     /** @test */
     public function it_handles_mathematical_functions_correctly()
     {
-        $experiment = new Experiment();
-        $reflection = new \ReflectionClass($experiment);
-
-        // Test normalCDF
-        $normalCDF = $reflection->getMethod('normalCDF');
-        $normalCDF->setAccessible(true);
-        
-        $result = $normalCDF->invoke($experiment, 0);
-        $this->assertEqualsWithDelta(0.5, $result, 0.01);
-
-        // Test erf
-        $erf = $reflection->getMethod('erf');
-        $erf->setAccessible(true);
-        
-        $result = $erf->invoke($experiment, 0);
-        $this->assertEqualsWithDelta(0, $result, 0.01);
-
-        $result = $erf->invoke($experiment, 1);
-        $this->assertGreaterThan(0.8, $result);
+        // The maths now lives in one shared class (Statistics) — the model's
+        // private normalCDF/erf copies were removed in the consolidation.
+        $this->assertEqualsWithDelta(0.5, \Homemove\AbTesting\Support\Statistics::normalCDF(0), 0.01);
+        $this->assertEqualsWithDelta(0.8413, \Homemove\AbTesting\Support\Statistics::normalCDF(1.0), 0.001);
+        $this->assertEqualsWithDelta(0.9772, \Homemove\AbTesting\Support\Statistics::normalCDF(2.0), 0.001);
+        $this->assertEqualsWithDelta(1 - 0.8413, \Homemove\AbTesting\Support\Statistics::normalCDF(-1.0), 0.001);
     }
 }
