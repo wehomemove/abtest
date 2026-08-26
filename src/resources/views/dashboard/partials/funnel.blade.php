@@ -21,14 +21,17 @@
             }
         }
     @endphp
-    <div class="bg-white rounded shadow-lg mb-8 hover:shadow-xl transition-all duration-300" id="funnel-card">
-        <div class="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 flex items-center justify-between flex-wrap gap-2">
+    <div class="bg-white rounded shadow-lg mb-8 hover:shadow-xl transition-all duration-300" id="funnel-card" x-data="{ open: true }">
+        <div class="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 flex items-center justify-between flex-wrap gap-2 cursor-pointer select-none"
+             @click="open = !open" title="Click to collapse/expand">
             <div>
-                <h3 class="text-lg font-semibold text-gray-900">Funnel — where each variant loses people</h3>
+                <h3 class="text-lg font-semibold text-gray-900">
+                    <i class="fas fa-chevron-down mr-2 text-gray-400 transition-transform duration-200" :class="open ? '' : '-rotate-90'"></i>Funnel — where each variant loses people
+                </h3>
                 <p class="text-sm text-gray-600 mt-1">
                     @if(($funnel['source'] ?? '') === 'ab_events')
                         Event reach funnel (users reaching each step, first touch)
-                        — <a href="{{ route('ab-testing.dashboard.edit', $experiment) }}" class="text-blue-600 hover:underline">configure step order</a>
+                        — <a href="{{ route('ab-testing.dashboard.edit', $experiment) }}" class="text-blue-600 hover:underline" @click.stop>configure step order</a>
                     @else
                         Step-level funnel · source: {{ $funnel['source'] }}
                     @endif
@@ -36,7 +39,7 @@
             </div>
             <span class="text-xs text-gray-500">Bar = % of the arm's first step · label = step→step retention</span>
         </div>
-        <div class="p-6 overflow-x-auto">
+        <div class="p-6 overflow-x-auto" x-show="open">
             <div class="grid gap-6" style="grid-template-columns: repeat({{ count($funnelVariants) }}, minmax(220px, 1fr));">
                 @foreach($funnelVariants as $fv)
                     <div>
