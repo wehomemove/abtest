@@ -4,6 +4,7 @@ namespace Homemove\AbTesting\Http\Controllers;
 
 use Homemove\AbTesting\Facades\AbTest;
 use Homemove\AbTesting\Models\Experiment;
+use Homemove\AbTesting\Services\ExperimentStatsService;
 use Homemove\AbTesting\Support\Statistics;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -172,68 +173,56 @@ class ApiController extends Controller
         }
     }
 
+    /**
+     * The 10s dashboard poll. Numbers come from the same ExperimentStatsService
+     * the page render uses — before this the two endpoints drifted (the poll
+     * had no event breakdown, so the donut and table could never live-refresh).
+     * Funnel data rides only on ?include=funnel (a slower 60s timer) to keep
+     * the frequent poll light.
+     */
     public function getExperimentStats(Request $request, $experimentId)
     {
         try {
             $experiment = Experiment::findOrFail($experimentId);
             $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
+            $service = app(ExperimentStatsService::class);
 
-            // Get variant statistics
+            $variantStats = $service->variantStats($experiment, $deviceType);
+            $controlRate = $variantStats['control']['conversion_rate'] ?? 0;
+
             $variants = [];
-            $controlRate = 0;
-
-            foreach ($experiment->variants as $variant => $weight) {
-                $assignmentsQuery = $experiment->assignments()->where('variant', $variant);
-                $conversionsQuery = $experiment->events()
-                    ->where('variant', $variant)
-                    ->where('event_name', 'conversion');
-
-                if ($deviceType !== null) {
-                    $assignmentsQuery->where('device_type', $deviceType);
-                    $conversionsQuery->where('device_type', $deviceType);
-                }
-
-                $assignments = $assignmentsQuery->count();
-                $conversions = $conversionsQuery->distinct('user_id')->count();
-
-                $rate = $assignments > 0 ? round(($conversions / $assignments) * 100, 2) : 0;
-
-                if ($variant === 'control') {
-                    $controlRate = $rate;
-                }
-
+            foreach ($variantStats as $variant => $data) {
                 $variants[$variant] = [
-                    'participants' => $assignments,
-                    'conversions' => $conversions,
-                    'rate' => $rate,
-                    'lift' => 0, // Will calculate after getting control rate
-                    'color' => $this->getVariantColor($variant)
+                    'participants' => $data['assigned'],
+                    'conversions' => $data['converted'],
+                    'rate' => $data['conversion_rate'],
+                    'lift' => ($variant !== 'control' && $controlRate > 0)
+                        ? round((($data['conversion_rate'] - $controlRate) / $controlRate) * 100, 1)
+                        : 0,
+                    'color' => $this->getVariantColor($variant),
                 ];
             }
 
-            // Calculate lift for non-control variants
-            foreach ($variants as $variant => &$data) {
-                if ($variant !== 'control' && $controlRate > 0) {
-                    $data['lift'] = round((($data['rate'] - $controlRate) / $controlRate) * 100, 1);
-                }
-            }
+            $significanceByVariant = $service->significanceByVariant($variantStats);
 
-            $totalAssignments = array_sum(array_column($variants, 'participants'));
-            $totalConversions = array_sum(array_column($variants, 'conversions'));
-
-            // Calculate statistical significance for API
-            $significance = $this->significanceAgainstControl($variants);
-
-            return response()->json([
+            $payload = [
                 'success' => true,
                 'device_type' => $deviceType,
-                'total_assignments' => $totalAssignments,
-                'total_conversions' => $totalConversions,
+                'total_assignments' => array_sum(array_column($variants, 'participants')),
+                'total_conversions' => array_sum(array_column($variants, 'conversions')),
                 'variants' => $variants,
-                'statistical_significance' => $significance,
-                'updated_at' => now()->toISOString()
-            ]);
+                'statistical_significance' => $service->headlineSignificance($significanceByVariant),
+                'significance_by_variant' => $significanceByVariant,
+                'rate_change_pp' => $service->rateChangePp($experiment, $deviceType),
+                'event_counts_by_name' => $service->eventCountsByName($experiment, $deviceType),
+                'updated_at' => now()->toISOString(),
+            ];
 
+            if ($request->query('include') === 'funnel') {
+                $payload['funnel'] = $service->funnel($experiment, $deviceType);
+            }
+
+            return response()->json($payload);
         } catch (\Exception $e) {
             \Log::error('A/B Test stats error: ' . $e->getMessage());
 
@@ -449,52 +438,6 @@ class ApiController extends Controller
         return $colors[$variant] ?? $colors['default'];
     }
 
-    /**
-     * Headline significance for the polled payload: best-confidence arm vs
-     * control, via the shared Statistics class (see significance_by_variant
-     * in the dashboard payload for the full per-arm picture).
-     */
-    private function significanceAgainstControl(array $variants): array
-    {
-        $control = $variants['control'] ?? null;
-        if (!$control) {
-            return [
-                'percentage' => 0,
-                'status' => 'insufficient_data',
-                'message' => 'Need a control variant',
-                'confidence_level' => 'low',
-            ];
-        }
-
-        $best = null;
-        $bestName = null;
-        foreach ($variants as $name => $data) {
-            if ($name === 'control') {
-                continue;
-            }
-            $result = Statistics::twoProportionZTest(
-                (int) $control['participants'],
-                (int) $control['conversions'],
-                (int) $data['participants'],
-                (int) $data['conversions'],
-            );
-            if ($best === null || ($result['percentage'] ?? 0) > ($best['percentage'] ?? 0)) {
-                $best = $result;
-                $bestName = $name;
-            }
-        }
-
-        if ($best === null) {
-            return [
-                'percentage' => 0,
-                'status' => 'insufficient_data',
-                'message' => 'Need at least one non-control variant',
-                'confidence_level' => 'low',
-            ];
-        }
-
-        return array_merge($best, ['variant' => $bestName]);
-    }
 
     private function resolveDeviceTypeFilter($raw): ?string
     {

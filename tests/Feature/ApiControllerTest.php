@@ -398,4 +398,69 @@ class ApiControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('period', '24h');
     }
+
+    /** @test */
+    public function polled_stats_carry_event_breakdown_and_per_variant_significance()
+    {
+        $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([
+            'name' => 'poll_payload_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'created_at' => now(), 'updated_at' => now()],
+            ['experiment_id' => $experimentId, 'user_id' => 'u2', 'variant' => 'variant_b', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u2', 'variant' => 'variant_b', 'event_name' => 'flow_viewed', 'properties' => '{"count":1}', 'created_at' => now(), 'updated_at' => now()],
+            ['experiment_id' => $experimentId, 'user_id' => 'u2', 'variant' => 'variant_b', 'event_name' => 'conversion', 'properties' => '{"count":1}', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $response = $this->getJson("/api/ab-testing/experiments/{$experimentId}/stats");
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('event_counts_by_name.flow_viewed.variant_b', 1)
+            ->assertJsonPath('event_counts_by_name.conversion.variant_b', 1)
+            ->assertJsonStructure(['significance_by_variant' => ['variant_b'], 'rate_change_pp', 'variants' => ['control' => ['participants', 'conversions', 'rate', 'lift', 'color']]]);
+
+        // Funnel only rides on request
+        $this->assertArrayNotHasKey('funnel', $response->json());
+
+        $withFunnel = $this->getJson("/api/ab-testing/experiments/{$experimentId}/stats?include=funnel");
+        $withFunnel->assertOk();
+        $this->assertSame('ab_events', $withFunnel->json('funnel.source'));
+    }
+
+    /** @test */
+    public function recent_activity_returns_a_merged_ordered_feed()
+    {
+        $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([
+            'name' => 'activity_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'created_at' => now()->subMinutes(2), 'updated_at' => now()->subMinutes(2)],
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'event_name' => 'conversion', 'properties' => '{"count":1}', 'created_at' => now()->subMinute(), 'updated_at' => now()->subMinute()],
+        ]);
+
+        $response = $this->getJson("/api/ab-testing/experiments/{$experimentId}/recent-activity");
+
+        $response->assertOk();
+        $items = $response->json();
+        $this->assertIsArray($items);
+        $this->assertNotEmpty($items);
+        // newest first: the conversion event precedes the older assignment
+        $timestamps = array_column($items, 'timestamp');
+        $sorted = $timestamps;
+        rsort($sorted);
+        $this->assertSame($sorted, $timestamps);
+    }
 }

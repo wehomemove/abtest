@@ -74,7 +74,7 @@
                     <i class="fas fa-users text-xl"></i>
                 </div>
             </div>
-            <div class="text-3xl font-bold text-gray-900 mb-1">{{ number_format($stats['total_assignments']) }}</div>
+            <div class="text-3xl font-bold text-gray-900 mb-1" id="stat-participants">{{ number_format($stats['total_assignments']) }}</div>
             <div class="flex items-center">
                 <span class="text-xs text-blue-500 font-medium" id="participants-trend">
                     +<span id="recent-participants">{{ $stats['today_assignments'] ?? 0 }}</span> today
@@ -97,7 +97,7 @@
                     <i class="fas fa-chart-line text-xl"></i>
                 </div>
             </div>
-            <div class="text-3xl font-bold text-gray-900 mb-1">{{ number_format($stats['total_conversions']) }}</div>
+            <div class="text-3xl font-bold text-gray-900 mb-1" id="stat-conversions">{{ number_format($stats['total_conversions']) }}</div>
             <div class="flex items-center">
                 <span class="text-xs text-green-500 font-medium" id="conversions-trend">
                     +<span id="recent-conversions">{{ $stats['today_conversions'] ?? 0 }}</span> today
@@ -120,7 +120,7 @@
                     <i class="fas fa-percentage text-xl"></i>
                 </div>
             </div>
-            <div class="text-3xl font-bold text-gray-900 mb-1">
+            <div class="text-3xl font-bold text-gray-900 mb-1" id="stat-rate">
                 {{ $stats['total_assignments'] > 0 ? number_format(($stats['total_conversions'] / $stats['total_assignments']) * 100, 2) : 0 }}%
             </div>
             <div class="flex items-center">
@@ -157,7 +157,7 @@ Each arm's own confidence vs control is in the table below."></i>
                     <i class="fas fa-flask text-xl"></i>
                 </div>
             </div>
-            <div class="text-2xl font-bold {{ $stats['statistical_significance']['confidence_level'] === 'high' ? 'text-green-600' : ($stats['statistical_significance']['confidence_level'] === 'medium' ? 'text-yellow-600' : 'text-red-600') }} mb-1">
+            <div class="text-2xl font-bold {{ $stats['statistical_significance']['confidence_level'] === 'high' ? 'text-green-600' : ($stats['statistical_significance']['confidence_level'] === 'medium' ? 'text-yellow-600' : 'text-red-600') }} mb-1" id="significance-percentage">
                 {{ $stats['statistical_significance']['percentage'] }}%
             </div>
             <div class="flex items-center">
@@ -225,9 +225,9 @@ Each arm's own confidence vs control is in the table below."></i>
                                 @endif
                             </td>
                             <td class="py-3">{{ $data['weight'] }}%</td>
-                            <td class="py-3">{{ number_format($data['assigned']) }}</td>
-                            <td class="py-3">{{ number_format($data['converted']) }}</td>
-                            <td class="py-3 font-medium">{{ $data['conversion_rate'] }}%</td>
+                            <td class="py-3" id="row-{{ $variant }}-participants">{{ number_format($data['assigned']) }}</td>
+                            <td class="py-3" id="row-{{ $variant }}-conversions">{{ number_format($data['converted']) }}</td>
+                            <td class="py-3 font-medium" id="row-{{ $variant }}-rate">{{ $data['conversion_rate'] }}%</td>
                             <td class="py-3">
                                 @if($variant !== 'control' && $controlRate > 0)
                                     @php
@@ -318,7 +318,7 @@ function loadTimelineChart(period) {
         btn.classList.toggle('text-gray-600', !active);
     });
 
-    fetch(buildApiUrl(`/api/ab-testing/experiments/${experimentData.id}/chart-data`) + `&period=${period}`)
+    fetch(buildApiUrl('/chart-data', { period }))
         .then(response => response.json())
         .then(data => {
             if (!data.success) return;
@@ -556,9 +556,11 @@ let experimentData = {
 };
 window.activeDeviceType = @json($activeDeviceType);
 
-function buildApiUrl(path) {
-    const base = `/api/ab-testing/experiments/${experimentData.id}${path}`;
-    return window.activeDeviceType ? `${base}?device_type=${encodeURIComponent(window.activeDeviceType)}` : base;
+function buildApiUrl(path, params = {}) {
+    const url = new URL(`/api/ab-testing/experiments/${experimentData.id}${path}`, window.location.origin);
+    if (window.activeDeviceType) url.searchParams.set('device_type', window.activeDeviceType);
+    Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+    return url.pathname + url.search;
 }
 
 function handleDeviceFilterChange(value) {
@@ -589,6 +591,8 @@ function startRealTimeUpdates() {
         await fetchRecentActivity();
         updateLiveIndicators();
     }, 10000); // Update every 10 seconds for real data
+
+    setInterval(refreshFunnel, 60000); // Funnel on a slower cadence
 }
 
 async function fetchLatestStats() {
@@ -604,33 +608,84 @@ async function fetchLatestStats() {
 }
 
 function updateLiveIndicators() {
-    if (!statsData) return;
-    
-    // Update statistical significance if available
-    if (statsData.statistical_significance) {
-        const significance = statsData.statistical_significance;
-        
-        // Update significance percentage
-        const significanceElements = document.querySelectorAll('.text-2xl.font-bold');
-        const significanceElement = significanceElements[significanceElements.length - 1]; // Last one should be significance
-        
-        if (significanceElement && significanceElement.textContent.includes('%')) {
-            significanceElement.textContent = significance.percentage + '%';
-            
-            // Update color based on confidence level
-            significanceElement.className = `text-2xl font-bold mb-1 ${
-                significance.confidence_level === 'high' ? 'text-green-600' : 
-                significance.confidence_level === 'medium' ? 'text-yellow-600' : 
+    if (!statsData || !statsData.success) return;
+
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    };
+
+    setText('stat-participants', Number(statsData.total_assignments).toLocaleString());
+    setText('stat-conversions', Number(statsData.total_conversions).toLocaleString());
+    const rate = statsData.total_assignments > 0
+        ? ((statsData.total_conversions / statsData.total_assignments) * 100).toFixed(2)
+        : '0.00';
+    setText('stat-rate', rate + '%');
+
+    const significance = statsData.statistical_significance;
+    if (significance) {
+        const pct = document.getElementById('significance-percentage');
+        if (pct) {
+            pct.textContent = significance.percentage + '%';
+            pct.className = `text-2xl font-bold mb-1 ${
+                significance.confidence_level === 'high' ? 'text-green-600' :
+                significance.confidence_level === 'medium' ? 'text-yellow-600' :
                 'text-red-600'
             }`;
         }
-        
-        // Update message
-        const messageElement = document.getElementById('significance-message');
-        if (messageElement) {
-            messageElement.textContent = significance.message;
+        setText('significance-message', significance.message + (significance.variant ? ` · ${significance.variant}` : ''));
+    }
+
+    // Per-variant table cells
+    Object.entries(statsData.variants || {}).forEach(([variant, data]) => {
+        setText(`row-${variant}-participants`, Number(data.participants).toLocaleString());
+        setText(`row-${variant}-conversions`, Number(data.conversions).toLocaleString());
+        setText(`row-${variant}-rate`, data.rate + '%');
+    });
+
+    // Donut: refresh the client-side event-count blob and re-render the
+    // currently selected event
+    if (statsData.event_counts_by_name && window.variantChartInstance) {
+        window.variantChartEventCounts = statsData.event_counts_by_name;
+        const select = document.getElementById('variant-chart-event');
+        if (select && typeof updateVariantChart === 'function') {
+            updateVariantChart(select.value);
         }
     }
+}
+
+// Funnel refreshes on its own slower cadence — its counts are heavier to
+// compute, and step shapes only drift meaningfully over minutes.
+async function refreshFunnel() {
+    try {
+        const response = await fetch(buildApiUrl('/stats', { include: 'funnel' }));
+        if (!response.ok) return;
+        const data = await response.json();
+        const funnel = data.funnel;
+        if (!funnel || !funnel.steps) return;
+
+        funnel.steps.forEach((step, i) => {
+            Object.entries(step.counts || {}).forEach(([variant, count]) => {
+                const bar = document.querySelector(`[data-funnel-bar="${variant}:${step.key}"]`);
+                if (bar) {
+                    const base = Math.max(funnel.steps[0].counts?.[variant] ?? 0, 1);
+                    const pct = Math.min(100, (count / base) * 100);
+                    bar.style.width = Math.max(pct, 18) + '%';
+                    bar.style.opacity = (0.55 + 0.45 * (pct / 100)).toFixed(2);
+                    const countEl = bar.querySelector('span.font-semibold');
+                    if (countEl) countEl.textContent = Number(count).toLocaleString();
+                }
+                if (i > 0) {
+                    const prev = funnel.steps[i - 1].counts?.[variant] ?? 0;
+                    const label = document.querySelector(`[data-funnel-retention="${variant}:${step.key}"]`);
+                    if (label && prev > 0) {
+                        const keepBadge = label.textContent.includes('biggest drop');
+                        label.innerHTML = `<i class="fas fa-arrow-down mr-1"></i>${((count / prev) * 100).toFixed(1)}% continue${keepBadge ? ' · biggest drop' : ''}`;
+                    }
+                }
+            });
+        });
+    } catch (error) { /* funnel refresh is additive — never break the page */ }
 }
 
 async function fetchRecentActivity() {

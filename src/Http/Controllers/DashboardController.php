@@ -6,7 +6,7 @@ use Homemove\AbTesting\Facades\AbTest;
 use Homemove\AbTesting\Models\Event;
 use Homemove\AbTesting\Models\Experiment;
 use Homemove\AbTesting\Contracts\FunnelStepDataProvider;
-use Homemove\AbTesting\Services\ReachFunnelService;
+use Homemove\AbTesting\Services\ExperimentStatsService;
 use Homemove\AbTesting\Support\Statistics;
 use Homemove\AbTesting\Models\UserAssignment;
 use Illuminate\Http\Request;
@@ -38,23 +38,9 @@ class DashboardController extends Controller
         ]);
     }
 
-    /**
-     * Step-level funnel from a host-bound provider when one exists and has
-     * data; otherwise the package-native reach funnel from ab_events.
-     */
     protected function resolveFunnel(Experiment $experiment, ?string $deviceType): ?array
     {
-        if (app()->bound(FunnelStepDataProvider::class)) {
-            $provided = app(FunnelStepDataProvider::class)->funnelFor($experiment->name, $deviceType);
-            if ($provided !== null && ($provided['steps'] ?? []) !== []) {
-                $variants = array_keys($experiment->variants ?? []);
-                $provided['biggest_drop_after'] ??= (new ReachFunnelService)->funnelBiggestDrop($provided['steps'], $variants);
-
-                return $provided;
-            }
-        }
-
-        return (new ReachFunnelService)->funnelFor($experiment, $deviceType);
+        return app(ExperimentStatsService::class)->funnel($experiment, $deviceType);
     }
 
     /**
@@ -194,41 +180,12 @@ class DashboardController extends Controller
 
     protected function getExperimentStats(Experiment $experiment, ?string $deviceType = null, ?string $eventFilter = null): array
     {
-        // Get assignment counts by variant
-        $assignmentQuery = UserAssignment::where('experiment_id', $experiment->id);
-        if ($deviceType !== null) {
-            $assignmentQuery->where('device_type', $deviceType);
-        }
-        $assignments = (clone $assignmentQuery)
-            ->selectRaw('variant, COUNT(*) as count')
-            ->groupBy('variant')
-            ->pluck('count', 'variant')
-            ->toArray();
-
-        // Get conversion counts by variant
-        $conversionQuery = Event::where('experiment_id', $experiment->id)
-            ->where('event_name', 'conversion');
-        if ($deviceType !== null) {
-            $conversionQuery->where('device_type', $deviceType);
-        }
-        $conversions = (clone $conversionQuery)
-            ->selectRaw('variant, COUNT(DISTINCT user_id) as count')
-            ->groupBy('variant')
-            ->pluck('count', 'variant')
-            ->toArray();
-
-        // Per-event counts by variant — powers the variant-chart event dropdown.
-        $eventCountsQuery = Event::where('experiment_id', $experiment->id);
-        if ($deviceType !== null) {
-            $eventCountsQuery->where('device_type', $deviceType);
-        }
-        $eventCountsByName = $eventCountsQuery
-            ->selectRaw('event_name, variant, COUNT(DISTINCT user_id) as count')
-            ->groupBy('event_name', 'variant')
-            ->get()
-            ->groupBy('event_name')
-            ->map(fn ($rows) => $rows->pluck('count', 'variant')->toArray())
-            ->toArray();
+        // Shared computations — same numbers the polled API serves.
+        $statsService = app(ExperimentStatsService::class);
+        $unfilteredVariantStats = $statsService->variantStats($experiment, $deviceType);
+        $assignments = array_map(fn ($v) => $v['assigned'], $unfilteredVariantStats);
+        $conversions = array_map(fn ($v) => $v['converted'], $unfilteredVariantStats);
+        $eventCountsByName = $statsService->eventCountsByName($experiment, $deviceType);
 
         // Get user-organized event data
         $userEventsQuery = Event::where('experiment_id', $experiment->id);
@@ -368,56 +325,9 @@ class DashboardController extends Controller
 
         // Significance is computed against the unfiltered counts so the live-polled
         // value doesn't disagree with the headline question (does the variant win overall).
-        $unfilteredVariantStats = [];
-        foreach ($experiment->variants as $variant => $weight) {
-            $assigned = $assignments[$variant] ?? 0;
-            $converted = $conversions[$variant] ?? 0;
-            $unfilteredVariantStats[$variant] = [
-                'weight' => $weight,
-                'assigned' => $assigned,
-                'converted' => $converted,
-                'conversion_rate' => $assigned > 0 ? round(($converted / $assigned) * 100, 2) : 0,
-            ];
-        }
-        // Every non-control arm is tested against control — a four-arm test
-        // whose significance card only ever looked at the first variant told
-        // you nothing about the other two.
-        $control = $unfilteredVariantStats['control'] ?? null;
-        $significanceByVariant = [];
-        foreach ($unfilteredVariantStats as $variant => $data) {
-            if ($variant === 'control' || !$control) {
-                continue;
-            }
-            $significanceByVariant[$variant] = Statistics::twoProportionZTest(
-                $control['assigned'],
-                $control['converted'],
-                $data['assigned'],
-                $data['converted'],
-            );
-        }
-
-        // Headline = the arm with the highest confidence, named, so the card
-        // can say WHICH variant it is talking about.
-        $headlineVariant = null;
-        foreach ($significanceByVariant as $variant => $result) {
-            if ($headlineVariant === null
-                || ($result['percentage'] ?? 0) > ($significanceByVariant[$headlineVariant]['percentage'] ?? 0)) {
-                $headlineVariant = $variant;
-            }
-        }
-        $significance = $headlineVariant !== null
-            ? array_merge($significanceByVariant[$headlineVariant], ['variant' => $headlineVariant])
-            : [
-                'percentage' => 0,
-                'status' => 'insufficient_data',
-                'message' => 'Need a control and at least one variant',
-                'confidence_level' => 'low',
-            ];
-
-        // Real day-over-day movement of the cumulative conversion rate (in
-        // percentage points) — replaces a hardcoded placeholder in the view.
-        // Cumulative-vs-cumulative: daily-vs-daily is noise at small samples.
-        $rateChangePp = $this->cumulativeRateChangePp($experiment, $deviceType);
+        $significanceByVariant = $statsService->significanceByVariant($unfilteredVariantStats);
+        $significance = $statsService->headlineSignificance($significanceByVariant);
+        $rateChangePp = $statsService->rateChangePp($experiment, $deviceType);
 
         return [
             'variants' => $stats,
@@ -436,44 +346,6 @@ class DashboardController extends Controller
         ];
     }
 
-    /**
-     * Percentage-point change of the cumulative conversion rate vs where it
-     * stood at the start of today. Null when yesterday had no participants.
-     */
-    protected function cumulativeRateChangePp(Experiment $experiment, ?string $deviceType): ?float
-    {
-        $todayStart = now()->startOfDay();
-
-        $assignedBefore = UserAssignment::where('experiment_id', $experiment->id)
-            ->where('created_at', '<', $todayStart)
-            ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
-            ->count();
-
-        if ($assignedBefore === 0) {
-            return null;
-        }
-
-        $convertedBefore = Event::where('experiment_id', $experiment->id)
-            ->where('event_name', 'conversion')
-            ->where('created_at', '<', $todayStart)
-            ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
-            ->distinct('user_id')
-            ->count();
-
-        $assignedNow = UserAssignment::where('experiment_id', $experiment->id)
-            ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
-            ->count();
-        $convertedNow = Event::where('experiment_id', $experiment->id)
-            ->where('event_name', 'conversion')
-            ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
-            ->distinct('user_id')
-            ->count();
-
-        $before = ($convertedBefore / $assignedBefore) * 100;
-        $now = $assignedNow > 0 ? ($convertedNow / $assignedNow) * 100 : 0.0;
-
-        return round($now - $before, 2);
-    }
 
 
     /**
