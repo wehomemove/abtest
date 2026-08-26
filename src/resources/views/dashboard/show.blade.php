@@ -482,8 +482,9 @@ document.addEventListener('DOMContentLoaded', function() {
         <!-- Compact User List -->
         <div id="user-activity-list" class="space-y-2 max-h-96 overflow-y-auto">
             @if($stats['user_events']->count() > 0)
-                @foreach($stats['user_events']->take(20) as $index => $userData)
-                    <div class="user-activity-item border border-gray-200 rounded hover:shadow-md transition-all duration-200 cursor-pointer"
+                @foreach($stats['user_events']->take(200) as $index => $userData)
+                    <div class="user-activity-item border border-gray-200 rounded hover:shadow-md transition-all duration-200 cursor-pointer {{ $index >= 20 ? 'hidden' : '' }}"
+                         data-hidden-batch="{{ $index >= 20 ? 'true' : 'false' }}"
                          data-variant="{{ $userData['variant'] }}"
                          data-converted="{{ collect($userData['events'])->has('conversion') ? 'true' : 'false' }}"
                          data-activity="{{ $userData['total_interactions'] }}"
@@ -528,8 +529,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 @if($stats['user_events']->count() > 20)
                     <div class="text-center py-4">
-                        <button onclick="loadMoreUsers()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors font-medium">
-                            Load More Users ({{ $stats['user_events']->count() - 20 }} remaining)
+                        <button id="load-more-users" onclick="loadMoreUsers()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors font-medium">
+                            Load More Users ({{ min($stats['user_events']->count(), 200) - 20 }} more{{ $stats['user_events']->count() > 200 ? ', showing first 200' : '' }})
                         </button>
                     </div>
                 @endif
@@ -547,9 +548,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</div>
+
 <script>
-let statsData = @json($stats);
+// Only what the live-update JS needs before its first poll — the full stats
+// array carried every user's event history into page source.
+@php
+    $initialStatsPayload = [
+        'success' => true,
+        'total_assignments' => $stats['total_assignments'],
+        'total_conversions' => $stats['total_conversions'],
+        'statistical_significance' => $stats['statistical_significance'],
+        'significance_by_variant' => $stats['significance_by_variant'],
+        'rate_change_pp' => $stats['rate_change_pp'],
+    ];
+@endphp
+let statsData = @json($initialStatsPayload);
 let experimentData = {
     isActive: {{ $experiment->is_active ? 'true' : 'false' }},
     id: {{ $experiment->id }}
@@ -796,14 +810,23 @@ function filterUserActivity() {
 }
 
 function showUserDetails(index, userData) {
-    // Create modal or detailed view for user
-    console.log('User details:', userData);
-    alert(`User Details:\nID: ${userData.user_id}\nVariant: ${userData.variant}\nTotal Interactions: ${userData.total_interactions}\nUnique Events: ${userData.unique_events}`);
+    // Lightweight detail view: per-event counts and timestamps for one user.
+    const lines = Object.entries(userData.events || {})
+        .map(([name, info]) => `${name}: ${info.count ?? 1}x (last ${info.last_occurred ?? 'n/a'})`)
+        .join('\n');
+    alert(
+        `User ${userData.user_id}\nVariant: ${userData.variant}\n` +
+        `Interactions: ${userData.total_interactions}\n\nEvents:\n${lines || 'none'}`
+    );
 }
 
 function loadMoreUsers() {
-    // Ajax call to load more users
-    console.log('Loading more users...');
+    const hidden = document.querySelectorAll('.user-activity-item.hidden[data-hidden-batch="true"]');
+    Array.from(hidden).slice(0, 20).forEach(el => el.classList.remove('hidden'));
+    if (hidden.length <= 20) {
+        const btn = document.getElementById('load-more-users');
+        if (btn) btn.parentElement.classList.add('hidden');
+    }
 }
 
 // Add event listener for filter
@@ -827,8 +850,4 @@ function toggleAccordion(id) {
     }
 }
 </script>
-
-<!-- FontAwesome for icons -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-</div>
 @endsection

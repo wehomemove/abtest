@@ -61,10 +61,73 @@ AbTest::track('checkout_button', $userId, 'conversion', [
 
 Access your dashboard at: `/ab-testing/dashboard`
 
-- View real-time conversion rates
+- **Funnel view** — per-variant drop-off, step by step, with the biggest drop
+  highlighted per arm (see *Funnels* below)
+- Real-time conversion rates, per-device filtering, event filtering
+- **Per-variant statistical significance** — every arm tested against control
+  (two-proportion z-test); the headline card names the best-performing arm
+- Real day-over-day conversion-rate movement
+- Conversion-over-time line chart (24h / 7d / 30d)
+- Live activity feed and per-user event breakdowns
 - Manage experiments (create, pause, delete)
-- Statistical significance calculations
-- Export experiment data
+
+## 🔽 Funnels
+
+The dashboard renders a funnel of where each variant loses people. Two data
+tiers, picked automatically:
+
+**1. Event reach funnel (built in).** Distinct users reaching each named event,
+per variant, from `ab_events`. Step order comes from the experiment's *Funnel
+steps* list (editable on the create/edit forms; stored in `custom_events`), or
+falls back to first-observation order. `ab_events` stores one upserted row per
+user + event — there is no inter-event ordering — so this tier is honestly
+labelled "first touch reach", and `conversion` always renders last.
+
+**2. Step-level funnel (host-provided).** If your app keeps a real telemetry
+stream (page views, form steps), bind the provider and the dashboard shows
+step-level drop-off instead:
+
+```php
+use Homemove\AbTesting\Contracts\FunnelStepDataProvider;
+
+// app/Providers/AppServiceProvider.php
+$this->app->bind(FunnelStepDataProvider::class, MyFunnelProvider::class);
+```
+
+```php
+class MyFunnelProvider implements FunnelStepDataProvider
+{
+    public function funnelFor(string $experimentName, ?string $deviceType = null): ?array
+    {
+        // Return null when you have no data for this experiment — the
+        // dashboard falls back to the reach funnel.
+        return [
+            'source' => 'my_telemetry_table',
+            'steps' => [
+                ['key' => 'landing', 'label' => 'Landing', 'index' => 0, 'counts' => ['control' => 900, 'variant_b' => 880]],
+                ['key' => 'question_1', 'label' => 'Question 1', 'index' => 1, 'counts' => ['control' => 400, 'variant_b' => 610]],
+                // ...
+            ],
+        ];
+    }
+}
+```
+
+## 📡 Dashboard API
+
+Endpoints polled by the dashboard (all under `/api/ab-testing/experiments/{id}`):
+
+- `GET /stats` — variants (participants/conversions/rate/lift/color), totals,
+  `statistical_significance` (headline, named arm), `significance_by_variant`,
+  `rate_change_pp`, `event_counts_by_name`. Add `?include=funnel` for funnel
+  data (the dashboard requests it on a slower 60s cadence).
+- `GET /recent-activity` — merged feed of latest events + assignments.
+- `GET /chart-data?period=24h|7d|30d` — per-variant time series:
+  `{labels, variants: {name: {participants[], conversion_rate[], color}}}`.
+
+> **Security note:** the `/api/ab-testing/*` routes ship with no auth. Protect
+> them in your host app's middleware the same way you gate the dashboard web
+> routes (e.g. the password gate) — the stats endpoints expose experiment data.
 
 ## 🔧 Configuration
 
