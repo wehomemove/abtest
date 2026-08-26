@@ -348,4 +348,150 @@ class ApiControllerTest extends TestCase
                     ]
                 ]);
     }
+
+    /** @test */
+    public function chart_data_returns_per_variant_series()
+    {
+        $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([
+            'name' => 'chart_data_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'created_at' => now()->subHours(2), 'updated_at' => now()->subHours(2)],
+            ['experiment_id' => $experimentId, 'user_id' => 'u2', 'variant' => 'variant_b', 'created_at' => now()->subHours(2), 'updated_at' => now()->subHours(2)],
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u2', 'variant' => 'variant_b', 'event_name' => 'conversion', 'properties' => '{"count":1}', 'created_at' => now()->subHours(2), 'updated_at' => now()->subHours(2)],
+        ]);
+
+        $response = $this->getJson("/api/ab-testing/experiments/{$experimentId}/chart-data?period=24h");
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('period', '24h')
+            ->assertJsonStructure(['labels', 'variants' => ['control' => ['participants', 'conversion_rate', 'color'], 'variant_b' => ['participants', 'conversion_rate', 'color']]]);
+
+        $data = $response->json();
+        $this->assertCount(25, $data['labels']);
+        $this->assertSame(1, array_sum($data['variants']['control']['participants']));
+        $this->assertSame(1, array_sum($data['variants']['variant_b']['participants']));
+        // variant_b's converting bucket shows 100%, control never converts
+        $this->assertContains(100.0, array_map('floatval', $data['variants']['variant_b']['conversion_rate']));
+        $this->assertSame(0.0, max(array_map('floatval', $data['variants']['control']['conversion_rate'])));
+    }
+
+    /** @test */
+    public function chart_data_attributes_conversions_to_the_assignment_cohort()
+    {
+        $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([
+            'name' => 'chart_cohort_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        // One user assigned ~20h ago converts ~1h ago: the conversion must
+        // land in the ASSIGNMENT bucket, and no bucket may exceed 100%.
+        \Illuminate\Support\Facades\DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'early', 'variant' => 'control', 'created_at' => now()->subHours(20), 'updated_at' => now()->subHours(20)],
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'early', 'variant' => 'control', 'event_name' => 'conversion', 'properties' => '{"count":1}', 'created_at' => now()->subHour(), 'updated_at' => now()->subHour()],
+        ]);
+
+        $data = $this->getJson("/api/ab-testing/experiments/{$experimentId}/chart-data?period=24h")->json();
+
+        $participants = $data['variants']['control']['participants'];
+        $rates = array_map('floatval', $data['variants']['control']['conversion_rate']);
+        $assignedBucket = array_search(1, $participants, true);
+
+        $this->assertNotFalse($assignedBucket, 'assignment must appear in a bucket');
+        $this->assertSame(100.0, $rates[$assignedBucket], 'conversion belongs to the assignment cohort');
+        $this->assertLessThanOrEqual(100.0, max($rates), 'no bucket may exceed 100%');
+        $this->assertSame(100.0, array_sum($rates), 'no other bucket may carry the conversion');
+    }
+
+    /** @test */
+    public function chart_data_clamps_unknown_periods_to_24h()
+    {
+        $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([
+            'name' => 'chart_period_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->getJson("/api/ab-testing/experiments/{$experimentId}/chart-data?period=nonsense")
+            ->assertOk()
+            ->assertJsonPath('period', '24h');
+    }
+
+    /** @test */
+    public function polled_stats_carry_event_breakdown_and_per_variant_significance()
+    {
+        $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([
+            'name' => 'poll_payload_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'created_at' => now(), 'updated_at' => now()],
+            ['experiment_id' => $experimentId, 'user_id' => 'u2', 'variant' => 'variant_b', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u2', 'variant' => 'variant_b', 'event_name' => 'flow_viewed', 'properties' => '{"count":1}', 'created_at' => now(), 'updated_at' => now()],
+            ['experiment_id' => $experimentId, 'user_id' => 'u2', 'variant' => 'variant_b', 'event_name' => 'conversion', 'properties' => '{"count":1}', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $response = $this->getJson("/api/ab-testing/experiments/{$experimentId}/stats");
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('event_counts_by_name.flow_viewed.variant_b', 1)
+            ->assertJsonPath('event_counts_by_name.conversion.variant_b', 1)
+            ->assertJsonStructure(['significance_by_variant' => ['variant_b'], 'rate_change_pp', 'variants' => ['control' => ['participants', 'conversions', 'rate', 'lift', 'color']]]);
+
+        // Funnel only rides on request
+        $this->assertArrayNotHasKey('funnel', $response->json());
+
+        $withFunnel = $this->getJson("/api/ab-testing/experiments/{$experimentId}/stats?include=funnel");
+        $withFunnel->assertOk();
+        $this->assertSame('ab_events', $withFunnel->json('funnel.source'));
+    }
+
+    /** @test */
+    public function recent_activity_returns_a_merged_ordered_feed()
+    {
+        $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([
+            'name' => 'activity_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'created_at' => now()->subMinutes(2), 'updated_at' => now()->subMinutes(2)],
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'event_name' => 'conversion', 'properties' => '{"count":1}', 'created_at' => now()->subMinute(), 'updated_at' => now()->subMinute()],
+        ]);
+
+        $response = $this->getJson("/api/ab-testing/experiments/{$experimentId}/recent-activity");
+
+        $response->assertOk();
+        $items = $response->json();
+        $this->assertIsArray($items);
+        $this->assertNotEmpty($items);
+        // newest first: the conversion event precedes the older assignment
+        $timestamps = array_column($items, 'timestamp');
+        $sorted = $timestamps;
+        rsort($sorted);
+        $this->assertSame($sorted, $timestamps);
+    }
 }

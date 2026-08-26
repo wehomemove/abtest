@@ -4,6 +4,8 @@ namespace Homemove\AbTesting\Http\Controllers;
 
 use Homemove\AbTesting\Facades\AbTest;
 use Homemove\AbTesting\Models\Experiment;
+use Homemove\AbTesting\Services\ExperimentStatsService;
+use Homemove\AbTesting\Support\Statistics;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
@@ -171,68 +173,56 @@ class ApiController extends Controller
         }
     }
 
+    /**
+     * The 10s dashboard poll. Numbers come from the same ExperimentStatsService
+     * the page render uses — before this the two endpoints drifted (the poll
+     * had no event breakdown, so the donut and table could never live-refresh).
+     * Funnel data rides only on ?include=funnel (a slower 60s timer) to keep
+     * the frequent poll light.
+     */
     public function getExperimentStats(Request $request, $experimentId)
     {
         try {
             $experiment = Experiment::findOrFail($experimentId);
             $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
+            $service = app(ExperimentStatsService::class);
 
-            // Get variant statistics
+            $variantStats = $service->variantStats($experiment, $deviceType);
+            $controlRate = $variantStats['control']['conversion_rate'] ?? 0;
+
             $variants = [];
-            $controlRate = 0;
-
-            foreach ($experiment->variants as $variant => $weight) {
-                $assignmentsQuery = $experiment->assignments()->where('variant', $variant);
-                $conversionsQuery = $experiment->events()
-                    ->where('variant', $variant)
-                    ->where('event_name', 'conversion');
-
-                if ($deviceType !== null) {
-                    $assignmentsQuery->where('device_type', $deviceType);
-                    $conversionsQuery->where('device_type', $deviceType);
-                }
-
-                $assignments = $assignmentsQuery->count();
-                $conversions = $conversionsQuery->distinct('user_id')->count();
-
-                $rate = $assignments > 0 ? round(($conversions / $assignments) * 100, 2) : 0;
-
-                if ($variant === 'control') {
-                    $controlRate = $rate;
-                }
-
+            foreach ($variantStats as $variant => $data) {
                 $variants[$variant] = [
-                    'participants' => $assignments,
-                    'conversions' => $conversions,
-                    'rate' => $rate,
-                    'lift' => 0, // Will calculate after getting control rate
-                    'color' => $this->getVariantColor($variant)
+                    'participants' => $data['assigned'],
+                    'conversions' => $data['converted'],
+                    'rate' => $data['conversion_rate'],
+                    'lift' => ($variant !== 'control' && $controlRate > 0)
+                        ? round((($data['conversion_rate'] - $controlRate) / $controlRate) * 100, 1)
+                        : 0,
+                    'color' => $this->getVariantColor($variant),
                 ];
             }
 
-            // Calculate lift for non-control variants
-            foreach ($variants as $variant => &$data) {
-                if ($variant !== 'control' && $controlRate > 0) {
-                    $data['lift'] = round((($data['rate'] - $controlRate) / $controlRate) * 100, 1);
-                }
-            }
+            $significanceByVariant = $service->significanceByVariant($variantStats);
 
-            $totalAssignments = array_sum(array_column($variants, 'participants'));
-            $totalConversions = array_sum(array_column($variants, 'conversions'));
-
-            // Calculate statistical significance for API
-            $significance = $this->calculateStatisticalSignificanceForAPI($variants);
-
-            return response()->json([
+            $payload = [
                 'success' => true,
                 'device_type' => $deviceType,
-                'total_assignments' => $totalAssignments,
-                'total_conversions' => $totalConversions,
+                'total_assignments' => array_sum(array_column($variants, 'participants')),
+                'total_conversions' => array_sum(array_column($variants, 'conversions')),
                 'variants' => $variants,
-                'statistical_significance' => $significance,
-                'updated_at' => now()->toISOString()
-            ]);
+                'statistical_significance' => $service->headlineSignificance($significanceByVariant),
+                'significance_by_variant' => $significanceByVariant,
+                'rate_change_pp' => $service->rateChangePp($experiment, $deviceType),
+                'event_counts_by_name' => $service->eventCountsByName($experiment, $deviceType),
+                'updated_at' => now()->toISOString(),
+            ];
 
+            if ($request->query('include') === 'funnel') {
+                $payload['funnel'] = $service->funnel($experiment, $deviceType);
+            }
+
+            return response()->json($payload);
         } catch (\Exception $e) {
             \Log::error('A/B Test stats error: ' . $e->getMessage());
 
@@ -311,75 +301,101 @@ class ApiController extends Controller
         }
     }
 
+    /**
+     * Per-variant time series for the "Conversion over time" chart, by
+     * ASSIGNMENT COHORT: each bucket counts the participants assigned in it,
+     * and the rate is the share of that cohort that ever converted (conversions
+     * are attributed to the converter's assignment bucket, not the conversion
+     * moment — mixing the two lets late converters push a bucket past 100%).
+     * Two queries total, bucketed in PHP — portable across SQLite (tests) and
+     * MySQL/Postgres, and O(rows) not O(buckets).
+     */
     public function getChartData(Request $request, $experimentId)
     {
         try {
             $experiment = Experiment::findOrFail($experimentId);
-            $period = $request->get('period', '24h');
+            $period = in_array($request->get('period'), ['24h', '7d', '30d'], true) ? $request->get('period') : '24h';
             $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
 
-            // Calculate time range
             $now = now();
-            switch ($period) {
-                case '24h':
-                    $startTime = $now->copy()->subHours(24);
-                    $interval = 'hour';
-                    $points = 24;
-                    break;
-                case '7d':
-                    $startTime = $now->copy()->subDays(7);
-                    $interval = 'day';
-                    $points = 7;
-                    break;
-                case '30d':
-                    $startTime = $now->copy()->subDays(30);
-                    $interval = 'day';
-                    $points = 10; // Show every 3 days
-                    break;
-                default:
-                    $startTime = $now->copy()->subHours(24);
-                    $interval = 'hour';
-                    $points = 24;
+            [$startTime, $intervalMinutes, $points, $labelFormat] = match ($period) {
+                '7d' => [$now->copy()->subDays(7)->startOfDay(), 1440, 8, 'M j'],
+                '30d' => [$now->copy()->subDays(30)->startOfDay(), 1440, 31, 'M j'],
+                default => [$now->copy()->subHours(24)->startOfHour(), 60, 25, 'H:00'],
+            };
+
+            $variantNames = array_keys($experiment->variants ?? []);
+            $bucketFor = function ($timestamp) use ($startTime, $intervalMinutes) {
+                $minutes = $startTime->diffInMinutes(\Illuminate\Support\Carbon::parse($timestamp), false);
+
+                return $minutes < 0 ? null : intdiv((int) $minutes, $intervalMinutes);
+            };
+
+            $assignmentRows = $experiment->assignments()
+                ->where('created_at', '>=', $startTime)
+                ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
+                ->get(['variant', 'user_id', 'created_at']);
+
+            // No time filter: a conversion belongs to its user's assignment
+            // cohort regardless of when it happened.
+            $conversionRows = $experiment->events()
+                ->where('event_name', 'conversion')
+                ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
+                ->get(['variant', 'user_id'])
+                ->unique(fn ($row) => $row->variant . '|' . $row->user_id);
+
+            $series = [];
+            foreach ($variantNames as $variant) {
+                $series[$variant] = [
+                    'participants' => array_fill(0, $points, 0),
+                    'conversions' => array_fill(0, $points, 0),
+                ];
             }
 
-            // Get conversion rates over time
-            $values = [];
-            for ($i = 0; $i < $points; $i++) {
-                $timePoint = $interval === 'hour'
-                    ? $startTime->copy()->addHours($i)
-                    : $startTime->copy()->addDays($i * ($period === '30d' ? 3 : 1));
-
-                $nextTimePoint = $interval === 'hour'
-                    ? $timePoint->copy()->addHour()
-                    : $timePoint->copy()->addDay();
-
-                // Get assignments and conversions in this time period
-                $assignmentsQuery = $experiment->assignments()
-                    ->whereBetween('created_at', [$timePoint, $nextTimePoint]);
-                $conversionsQuery = $experiment->events()
-                    ->where('event_name', 'conversion')
-                    ->whereBetween('created_at', [$timePoint, $nextTimePoint]);
-
-                if ($deviceType !== null) {
-                    $assignmentsQuery->where('device_type', $deviceType);
-                    $conversionsQuery->where('device_type', $deviceType);
+            // user|variant => the bucket they were ASSIGNED in.
+            $assignmentBucket = [];
+            foreach ($assignmentRows as $row) {
+                $bucket = $bucketFor($row->created_at);
+                if ($bucket !== null && $bucket < $points && isset($series[$row->variant])) {
+                    $series[$row->variant]['participants'][$bucket]++;
+                    $assignmentBucket[$row->variant . '|' . $row->user_id] = $bucket;
                 }
+            }
+            foreach ($conversionRows as $row) {
+                $bucket = $assignmentBucket[$row->variant . '|' . $row->user_id] ?? null;
+                if ($bucket !== null && isset($series[$row->variant])) {
+                    $series[$row->variant]['conversions'][$bucket]++;
+                }
+            }
 
-                $assignments = $assignmentsQuery->count();
-                $conversions = $conversionsQuery->distinct('user_id')->count();
+            $labels = [];
+            for ($i = 0; $i < $points; $i++) {
+                $labels[] = $startTime->copy()->addMinutes($i * $intervalMinutes)->format($labelFormat);
+            }
 
-                $rate = $assignments > 0 ? round(($conversions / $assignments) * 100, 2) : 0;
-                $values[] = $rate;
+            $variants = [];
+            foreach ($variantNames as $variant) {
+                $rates = [];
+                foreach ($series[$variant]['participants'] as $i => $assigned) {
+                    $rates[] = $assigned > 0
+                        ? round(($series[$variant]['conversions'][$i] / $assigned) * 100, 2)
+                        : 0;
+                }
+                $variants[$variant] = [
+                    'participants' => $series[$variant]['participants'],
+                    'conversion_rate' => $rates,
+                    'color' => $this->getVariantColor($variant),
+                ];
             }
 
             return response()->json([
                 'success' => true,
-                'values' => $values,
+                'labels' => $labels,
+                'variants' => $variants,
                 'period' => $period,
                 'start_time' => $startTime->toISOString(),
-                'end_time' => $now->toISOString()
+                'end_time' => $now->toISOString(),
             ]);
-
         } catch (\Exception $e) {
             \Log::error('A/B Test chart data error: ' . $e->getMessage());
 
@@ -430,104 +446,6 @@ class ApiController extends Controller
         return $colors[$variant] ?? $colors['default'];
     }
 
-    private function calculateStatisticalSignificanceForAPI(array $variants): array
-    {
-        // Find control and test variants
-        $control = null;
-        $test = null;
-
-        foreach ($variants as $variant => $data) {
-            if ($variant === 'control') {
-                $control = $data;
-            } else {
-                $test = $data; // Use first non-control variant
-                break;
-            }
-        }
-
-        if (!$control || !$test || $control['participants'] < 30 || $test['participants'] < 30) {
-            return [
-                'percentage' => 0,
-                'status' => 'insufficient_data',
-                'message' => 'Need at least 30 participants per variant',
-                'confidence_level' => 'low'
-            ];
-        }
-
-        // Two-proportion z-test
-        $n1 = $control['participants'];
-        $x1 = $control['conversions'];
-        $p1 = $x1 / $n1;
-
-        $n2 = $test['participants'];
-        $x2 = $test['conversions'];
-        $p2 = $x2 / $n2;
-
-        // Pooled proportion
-        $p_pool = ($x1 + $x2) / ($n1 + $n2);
-
-        // Standard error
-        $se = sqrt($p_pool * (1 - $p_pool) * (1 / $n1 + 1 / $n2));
-
-        if ($se == 0) {
-            return [
-                'percentage' => 0,
-                'status' => 'no_difference',
-                'message' => 'No measurable difference',
-                'confidence_level' => 'low'
-            ];
-        }
-
-        // Z-score
-        $z = abs($p2 - $p1) / $se;
-
-        // Convert to p-value (two-tailed test)
-        $p_value = 2 * (1 - $this->normalCDF($z));
-
-        // Convert to confidence percentage
-        $confidence = (1 - $p_value) * 100;
-
-        // Determine status and message
-        if ($confidence >= 95) {
-            $status = 'significant';
-            $message = 'Statistically Significant';
-            $level = 'high';
-        } elseif ($confidence >= 90) {
-            $status = 'approaching';
-            $message = 'Approaching Significance';
-            $level = 'medium';
-        } elseif ($confidence >= 80) {
-            $status = 'trending';
-            $message = 'Trending Towards Significance';
-            $level = 'medium';
-        } else {
-            $status = 'not_significant';
-            $message = 'Not Yet Significant';
-            $level = 'low';
-        }
-
-        return [
-            'percentage' => round($confidence, 1),
-            'status' => $status,
-            'message' => $message,
-            'confidence_level' => $level,
-            'p_value' => round($p_value, 4),
-            'z_score' => round($z, 3)
-        ];
-    }
-
-    private function normalCDF($x)
-    {
-        // Approximation of the cumulative distribution function for standard normal distribution
-        $t = 1.0 / (1.0 + 0.2316419 * abs($x));
-        $y = $t * (0.319381530 + $t * (-0.356563782 + $t * (1.781477937 + $t * (-1.821255978 + $t * 1.330274429))));
-
-        if ($x >= 0) {
-            return 1.0 - 0.3989423 * exp(-0.5 * $x * $x) * $y;
-        } else {
-            return 0.3989423 * exp(-0.5 * $x * $x) * $y;
-        }
-    }
 
     private function resolveDeviceTypeFilter($raw): ?string
     {

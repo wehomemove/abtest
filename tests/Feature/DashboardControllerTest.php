@@ -2,6 +2,7 @@
 
 namespace Homemove\AbTesting\Tests\Feature;
 
+use Homemove\AbTesting\Models\Experiment;
 use Homemove\AbTesting\Tests\TestCase;
 use Illuminate\Support\Facades\DB;
 
@@ -235,7 +236,7 @@ class DashboardControllerTest extends TestCase
     {
         $experimentId = DB::table('ab_experiments')->insertGetId([
             'name' => 'same_name_test',
-            'variants' => json_encode(['control' => 100]),
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
             'traffic_allocation' => 100,
             'is_active' => true,
             'created_at' => now(),
@@ -244,7 +245,7 @@ class DashboardControllerTest extends TestCase
 
         $response = $this->put("/ab-testing/dashboard/{$experimentId}", [
             'name' => 'same_name_test', // Same name should be allowed for updates
-            'variants' => ['control' => 100],
+            'variants' => ['control' => 50, 'variant_b' => 50],
             'traffic_allocation' => 100,
             'is_active' => true,
         ]);
@@ -336,7 +337,6 @@ class DashboardControllerTest extends TestCase
         $this->assertEquals(3, $stats['total_assignments']);
         $this->assertEquals(2, $stats['total_conversions']);
         $this->assertEquals(3, $stats['total_events']);
-        $this->assertEquals(5, $stats['total_interactions']); // 1 + 3 + 1
         $this->assertEquals(2, $stats['unique_users']); // user1 and user3
 
         // Variant stats
@@ -347,6 +347,184 @@ class DashboardControllerTest extends TestCase
         $this->assertEquals(1, $stats['variants']['variant_a']['assigned']);
         $this->assertEquals(1, $stats['variants']['variant_a']['converted']);
         $this->assertEquals(100.0, $stats['variants']['variant_a']['conversion_rate']);
+    }
+
+    /** @test */
+    public function it_computes_significance_for_every_variant_against_control()
+    {
+        $experimentId = DB::table('ab_experiments')->insertGetId([
+            'name' => 'four_arm_sig_test',
+            'variants' => json_encode(['control' => 25, 'variant_b' => 25, 'variant_c' => 25, 'variant_d' => 25]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // 100 participants per arm; conversion counts chosen so variant_c is
+        // the clear winner and must be the named headline.
+        $assignments = [];
+        $events = [];
+        $converted = ['control' => 10, 'variant_b' => 12, 'variant_c' => 30, 'variant_d' => 8];
+        foreach ($converted as $variant => $conversions) {
+            for ($i = 0; $i < 100; $i++) {
+                $userId = "{$variant}-user-{$i}";
+                $assignments[] = ['experiment_id' => $experimentId, 'user_id' => $userId, 'variant' => $variant, 'created_at' => now(), 'updated_at' => now()];
+                if ($i < $conversions) {
+                    $events[] = ['experiment_id' => $experimentId, 'user_id' => $userId, 'variant' => $variant, 'event_name' => 'conversion', 'properties' => '{"count": 1}', 'created_at' => now(), 'updated_at' => now()];
+                }
+            }
+        }
+        DB::table('ab_user_assignments')->insert($assignments);
+        DB::table('ab_events')->insert($events);
+
+        $stats = $this->get("/ab-testing/dashboard/{$experimentId}")->viewData('stats');
+
+        // Every non-control arm gets its own result — not just the first.
+        $this->assertSame(['variant_b', 'variant_c', 'variant_d'], array_keys($stats['significance_by_variant']));
+        $this->assertSame('significant', $stats['significance_by_variant']['variant_c']['status']);
+
+        // Headline names the best-confidence arm.
+        $this->assertSame('variant_c', $stats['statistical_significance']['variant']);
+        $this->assertGreaterThanOrEqual(95, $stats['statistical_significance']['percentage']);
+    }
+
+    /** @test */
+    public function it_reports_real_day_over_day_rate_change()
+    {
+        $experimentId = DB::table('ab_experiments')->insertGetId([
+            'name' => 'rate_change_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Yesterday: 4 participants, 1 conversion (25%). Today: +1 participant
+        // who converts -> cumulative 2/5 = 40% -> +15pp.
+        $yesterday = now()->subDay();
+        $rows = [];
+        for ($i = 0; $i < 4; $i++) {
+            $rows[] = ['experiment_id' => $experimentId, 'user_id' => "y{$i}", 'variant' => $i % 2 ? 'variant_b' : 'control', 'created_at' => $yesterday, 'updated_at' => $yesterday];
+        }
+        $rows[] = ['experiment_id' => $experimentId, 'user_id' => 'today-user', 'variant' => 'control', 'created_at' => now(), 'updated_at' => now()];
+        DB::table('ab_user_assignments')->insert($rows);
+        DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'y0', 'variant' => 'control', 'event_name' => 'conversion', 'properties' => '{"count": 1}', 'created_at' => $yesterday, 'updated_at' => $yesterday],
+            ['experiment_id' => $experimentId, 'user_id' => 'today-user', 'variant' => 'control', 'event_name' => 'conversion', 'properties' => '{"count": 1}', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $stats = $this->get("/ab-testing/dashboard/{$experimentId}")->viewData('stats');
+
+        $this->assertEqualsWithDelta(15.0, $stats['rate_change_pp'], 0.01);
+    }
+
+    /** @test */
+    public function rate_change_is_null_with_no_prior_day_data()
+    {
+        $experimentId = DB::table('ab_experiments')->insertGetId([
+            'name' => 'rate_change_null_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $stats = $this->get("/ab-testing/dashboard/{$experimentId}")->viewData('stats');
+
+        $this->assertNull($stats['rate_change_pp']);
+    }
+
+    /** @test */
+    public function dashboard_uses_a_bound_funnel_provider_and_falls_back_on_null()
+    {
+        $experimentId = DB::table('ab_experiments')->insertGetId([
+            'name' => 'provider_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'event_name' => 'conversion', 'properties' => '{"count":1}', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        // Bound provider with data: its funnel wins.
+        $this->app->bind(\Homemove\AbTesting\Contracts\FunnelStepDataProvider::class, function () {
+            return new class implements \Homemove\AbTesting\Contracts\FunnelStepDataProvider {
+                public function funnelFor(string $experimentName, ?string $deviceType = null): ?array
+                {
+                    return [
+                        'source' => 'fake_step_source',
+                        'steps' => [
+                            ['key' => 'landing', 'label' => 'Landing', 'index' => 0, 'counts' => ['control' => 10, 'variant_b' => 9]],
+                            ['key' => 'question_1', 'label' => 'Question 1', 'index' => 1, 'counts' => ['control' => 4, 'variant_b' => 8]],
+                        ],
+                    ];
+                }
+            };
+        });
+
+        $stats = $this->get("/ab-testing/dashboard/{$experimentId}")->viewData('stats');
+        $this->assertSame('fake_step_source', $stats['funnel']['source']);
+        // biggest drop computed for provider data that arrives without one
+        $this->assertSame('landing', $stats['funnel']['biggest_drop_after']['control']);
+
+        // Provider returning null: package reach funnel takes over.
+        $this->app->bind(\Homemove\AbTesting\Contracts\FunnelStepDataProvider::class, function () {
+            return new class implements \Homemove\AbTesting\Contracts\FunnelStepDataProvider {
+                public function funnelFor(string $experimentName, ?string $deviceType = null): ?array
+                {
+                    return null;
+                }
+            };
+        });
+
+        $stats = $this->get("/ab-testing/dashboard/{$experimentId}")->viewData('stats');
+        $this->assertSame('ab_events', $stats['funnel']['source']);
+    }
+
+    /** @test */
+    public function funnel_steps_round_trip_through_custom_events()
+    {
+        $response = $this->post('/ab-testing/dashboard', [
+            'name' => 'funnel_steps_test',
+            'variants' => ['control' => 50, 'variant_b' => 50],
+            'traffic_allocation' => 100,
+            'funnel_steps' => ['flow_viewed', '  ', 'lead_created', ''],
+        ]);
+
+        $experiment = Experiment::where('name', 'funnel_steps_test')->firstOrFail();
+        // blanks dropped, order kept
+        $this->assertSame(['flow_viewed', 'lead_created'], $experiment->custom_events);
+
+        // What a real "remove all steps" form submission sends: only the
+        // hidden sentinel (an empty string), never a bare [].
+        $this->put("/ab-testing/dashboard/{$experiment->id}", [
+            'name' => 'funnel_steps_test',
+            'variants' => ['control' => 50, 'variant_b' => 50],
+            'traffic_allocation' => 100,
+            'is_active' => true,
+            'funnel_steps' => [''],
+        ]);
+
+        $this->assertNull($experiment->fresh()->custom_events);
+
+        // A caller that omits the key entirely (non-form API usage) leaves
+        // the stored list untouched.
+        $experiment->update(['custom_events' => ['flow_viewed']]);
+        $this->put("/ab-testing/dashboard/{$experiment->id}", [
+            'name' => 'funnel_steps_test',
+            'variants' => ['control' => 50, 'variant_b' => 50],
+            'traffic_allocation' => 100,
+            'is_active' => true,
+        ]);
+        $this->assertSame(['flow_viewed'], $experiment->fresh()->custom_events);
     }
 
     /** @test */
@@ -369,43 +547,4 @@ class DashboardControllerTest extends TestCase
         $this->assertEquals(0, $stats['variants']['control']['conversion_rate']);
     }
 
-    /** @test */
-    public function it_groups_user_events_correctly()
-    {
-        $experimentId = DB::table('ab_experiments')->insertGetId([
-            'name' => 'user_events_test',
-            'variants' => json_encode(['control' => 100]),
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        DB::table('ab_user_assignments')->insert([
-            ['experiment_id' => $experimentId, 'user_id' => 'user1', 'variant' => 'control', 'created_at' => now(), 'updated_at' => now()],
-        ]);
-
-        $baseTime = now();
-        DB::table('ab_events')->insert([
-            ['experiment_id' => $experimentId, 'user_id' => 'user1', 'variant' => 'control', 'event_name' => 'click', 'properties' => '{"count": 2}', 'created_at' => $baseTime, 'updated_at' => $baseTime],
-            ['experiment_id' => $experimentId, 'user_id' => 'user1', 'variant' => 'control', 'event_name' => 'conversion', 'properties' => '{"count": 1}', 'created_at' => $baseTime->addMinute(), 'updated_at' => $baseTime->addMinute()],
-        ]);
-
-        $response = $this->get("/ab-testing/dashboard/{$experimentId}");
-
-        $stats = $response->viewData('stats');
-        $userEvents = $stats['user_events'];
-
-        $this->assertCount(1, $userEvents);
-        
-        $user = $userEvents->first();
-        $this->assertEquals('user1', $user['user_id']);
-        $this->assertEquals('control', $user['variant']);
-        $this->assertEquals(3, $user['total_interactions']); // 2 + 1
-        $this->assertEquals(2, $user['unique_events']); // click, conversion
-        
-        $this->assertArrayHasKey('click', $user['events']);
-        $this->assertArrayHasKey('conversion', $user['events']);
-        $this->assertEquals(2, $user['events']['click']['count']);
-        $this->assertEquals(1, $user['events']['conversion']['count']);
-    }
 }

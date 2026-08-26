@@ -11,7 +11,7 @@
             <h1 class="text-3xl font-bold mb-2">{{ $experiment->name }}</h1>
             <p class="text-gray-100 text-lg">{{ $experiment->description }}</p>
             <div class="flex items-center mt-3 space-x-4 flex-wrap">
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ $experiment->is_active ? 'bg-red-500 text-white' : 'bg-red-500 text-white' }}">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ $experiment->is_active ? 'bg-green-600 text-white' : 'bg-gray-500 text-white' }}">
                     <div class="w-2 h-2 rounded-full mr-2 {{ $experiment->is_active ? 'bg-green-300' : 'bg-red-300' }}"></div>
                     {{ $experiment->is_active ? 'Active' : 'Paused' }}
                 </span>
@@ -46,7 +46,7 @@
             <form action="{{ route('ab-testing.dashboard.toggle', $experiment) }}" method="POST" class="inline">
                 @csrf
                 @method('PATCH')
-                <button type="submit" class="px-6 py-3 rounded font-medium transition-all duration-200 transform hover:scale-105 {{ $experiment->is_active ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-red-500 hover:bg-red-600 text-white' }}">
+                <button type="submit" class="px-6 py-3 rounded font-medium transition-all duration-200 transform hover:scale-105 {{ $experiment->is_active ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-green-600 hover:bg-green-700 text-white' }}">
                     {{ $experiment->is_active ? 'Pause' : 'Activate' }}
                 </button>
             </form>
@@ -74,7 +74,7 @@
                     <i class="fas fa-users text-xl"></i>
                 </div>
             </div>
-            <div class="text-3xl font-bold text-gray-900 mb-1">{{ number_format($stats['total_assignments']) }}</div>
+            <div class="text-3xl font-bold text-gray-900 mb-1" id="stat-participants">{{ number_format($stats['total_assignments']) }}</div>
             <div class="flex items-center">
                 <span class="text-xs text-blue-500 font-medium" id="participants-trend">
                     +<span id="recent-participants">{{ $stats['today_assignments'] ?? 0 }}</span> today
@@ -97,7 +97,7 @@
                     <i class="fas fa-chart-line text-xl"></i>
                 </div>
             </div>
-            <div class="text-3xl font-bold text-gray-900 mb-1">{{ number_format($stats['total_conversions']) }}</div>
+            <div class="text-3xl font-bold text-gray-900 mb-1" id="stat-conversions">{{ number_format($stats['total_conversions']) }}</div>
             <div class="flex items-center">
                 <span class="text-xs text-green-500 font-medium" id="conversions-trend">
                     +<span id="recent-conversions">{{ $stats['today_conversions'] ?? 0 }}</span> today
@@ -120,14 +120,18 @@
                     <i class="fas fa-percentage text-xl"></i>
                 </div>
             </div>
-            <div class="text-3xl font-bold text-gray-900 mb-1">
+            <div class="text-3xl font-bold text-gray-900 mb-1" id="stat-rate">
                 {{ $stats['total_assignments'] > 0 ? number_format(($stats['total_conversions'] / $stats['total_assignments']) * 100, 2) : 0 }}%
             </div>
             <div class="flex items-center">
-                <span class="text-xs font-medium text-green-500" id="rate-trend">
-                    <i class="fas fa-arrow-up"></i>
-                    <span id="rate-change">2.3</span>% vs yesterday
-                </span>
+                @if(($stats['rate_change_pp'] ?? null) === null)
+                    <span class="text-xs font-medium text-gray-400" id="rate-trend">No prior-day data yet</span>
+                @else
+                    <span class="text-xs font-medium {{ $stats['rate_change_pp'] > 0 ? 'text-green-500' : ($stats['rate_change_pp'] < 0 ? 'text-red-500' : 'text-gray-400') }}" id="rate-trend">
+                        <i class="fas {{ $stats['rate_change_pp'] > 0 ? 'fa-arrow-up' : ($stats['rate_change_pp'] < 0 ? 'fa-arrow-down' : 'fa-minus') }}"></i>
+                        <span id="rate-change">{{ number_format(abs($stats['rate_change_pp']), 2) }}</span>pp vs start of today
+                    </span>
+                @endif
             </div>
         </div>
     </div>
@@ -140,35 +144,25 @@
                 <h3 class="text-sm font-medium text-gray-600 flex items-center">
                     Significance
                     <i class="fas fa-info-circle text-gray-400 ml-1 text-xs cursor-help"
-                       title="📊 How Statistical Significance Works:
+                       title="📊 Two-proportion z-test, best-performing arm ({{ $stats['statistical_significance']['variant'] ?? 'n/a' }}) vs control.
 
-🔬 Method: Two-Proportion Z-Test
-This compares conversion rates between Control vs Test groups to determine if the difference is real or just random chance.
+Control: {{ $stats['variants']['control']['converted'] ?? 0 }}/{{ $stats['variants']['control']['assigned'] ?? 0 }} = {{ $stats['variants']['control']['conversion_rate'] ?? 0 }}%
+{{ $stats['statistical_significance']['variant'] ?? 'variant' }}: {{ $stats['variants'][$stats['statistical_significance']['variant'] ?? '']['converted'] ?? 0 }}/{{ $stats['variants'][$stats['statistical_significance']['variant'] ?? '']['assigned'] ?? 0 }} = {{ $stats['variants'][$stats['statistical_significance']['variant'] ?? '']['conversion_rate'] ?? 0 }}%
+Z-Score: {{ $stats['statistical_significance']['z_score'] ?? 'N/A' }} · P-Value: {{ $stats['statistical_significance']['p_value'] ?? 'N/A' }}
 
-📈 The Calculation:
-1. Control Rate: {{ $stats['variants']['control']['converted'] ?? 0 }}/{{ $stats['variants']['control']['assigned'] ?? 0 }} = {{ $stats['variants']['control']['conversion_rate'] ?? 0 }}%
-2. Test Rate: {{ collect($stats['variants'])->where('variants', '!=', 'control')->first()['converted'] ?? 0 }}/{{ collect($stats['variants'])->where('variants', '!=', 'control')->first()['assigned'] ?? 0 }} = {{ collect($stats['variants'])->except('control')->first()['conversion_rate'] ?? 0 }}%
-3. Z-Score: {{ $stats['statistical_significance']['z_score'] ?? 'N/A' }} (measures how many standard deviations apart the rates are)
-4. P-Value: {{ $stats['statistical_significance']['p_value'] ?? 'N/A' }} (probability this difference happened by chance)
-
-✅ Confidence Levels:
-• 95%+ = Statistically Significant (< 5% chance it's random)
-• 90-94% = Approaching Significance
-• 80-89% = Trending Towards Significance
-• < 80% = Not Yet Significant (need more data)
-
-📊 Current: {{ $stats['statistical_significance']['percentage'] ?? 0 }}% confident this difference is real"></i>
+✅ 95%+ significant · 90–94% approaching · 80–89% trending · <80% not yet.
+Each arm's own confidence vs control is in the table below."></i>
                 </h3>
                 <div class="text-purple-500">
                     <i class="fas fa-flask text-xl"></i>
                 </div>
             </div>
-            <div class="text-2xl font-bold {{ $stats['statistical_significance']['confidence_level'] === 'high' ? 'text-green-600' : ($stats['statistical_significance']['confidence_level'] === 'medium' ? 'text-yellow-600' : 'text-red-600') }} mb-1">
+            <div class="text-2xl font-bold {{ $stats['statistical_significance']['confidence_level'] === 'high' ? 'text-green-600' : ($stats['statistical_significance']['confidence_level'] === 'medium' ? 'text-yellow-600' : 'text-red-600') }} mb-1" id="significance-percentage">
                 {{ $stats['statistical_significance']['percentage'] }}%
             </div>
             <div class="flex items-center">
                 <span class="text-xs font-medium {{ $stats['statistical_significance']['confidence_level'] === 'high' ? 'text-green-500' : ($stats['statistical_significance']['confidence_level'] === 'medium' ? 'text-yellow-500' : 'text-red-500') }}" id="significance-status">
-                    <span id="significance-message">{{ $stats['statistical_significance']['message'] }}</span>
+                    <span id="significance-message">{{ $stats['statistical_significance']['message'] }}@isset($stats['statistical_significance']['variant']) · {{ $stats['statistical_significance']['variant'] }}@endisset</span>
                 </span>
             </div>
         </div>
@@ -197,6 +191,12 @@ This compares conversion rates between Control vs Test groups to determine if th
         </select>
     </div>
     <div class="p-6">
+        @if($activeEventFilter ?? null)
+            <div class="mb-4 flex items-center gap-2 rounded bg-yellow-50 border border-yellow-200 px-3 py-2 text-sm text-yellow-800">
+                <i class="fas fa-filter text-yellow-500"></i>
+                Showing users who hit <strong>{{ str_replace(['_', '-'], ' ', $activeEventFilter) }}</strong> — the headline cards above remain unfiltered.
+            </div>
+        @endif
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead>
@@ -207,6 +207,7 @@ This compares conversion rates between Control vs Test groups to determine if th
                         <th class="pb-3">Conversions</th>
                         <th class="pb-3">Conv. Rate</th>
                         <th class="pb-3">Lift</th>
+                        <th class="pb-3">Confidence</th>
                     </tr>
                 </thead>
                 <tbody class="space-y-2">
@@ -222,16 +223,28 @@ This compares conversion rates between Control vs Test groups to determine if th
                                 @endif
                             </td>
                             <td class="py-3">{{ $data['weight'] }}%</td>
-                            <td class="py-3">{{ number_format($data['assigned']) }}</td>
-                            <td class="py-3">{{ number_format($data['converted']) }}</td>
-                            <td class="py-3 font-medium">{{ $data['conversion_rate'] }}%</td>
+                            <td class="py-3" id="row-{{ $variant }}-participants">{{ number_format($data['assigned']) }}</td>
+                            <td class="py-3" id="row-{{ $variant }}-conversions">{{ number_format($data['converted']) }}</td>
+                            <td class="py-3 font-medium" id="row-{{ $variant }}-rate">{{ $data['conversion_rate'] }}%</td>
                             <td class="py-3">
                                 @if($variant !== 'control' && $controlRate > 0)
                                     @php
                                         $lift = (($data['conversion_rate'] - $controlRate) / $controlRate) * 100;
                                     @endphp
-                                    <span class="font-medium {{ $lift > 0 ? 'text-red-600' : 'text-red-600' }}">
+                                    <span class="font-medium {{ $lift > 0 ? 'text-green-600' : ($lift < 0 ? 'text-red-600' : 'text-gray-500') }}">
                                         {{ $lift > 0 ? '+' : '' }}{{ number_format($lift, 1) }}%
+                                    </span>
+                                @else
+                                    <span class="text-gray-400">-</span>
+                                @endif
+                            </td>
+                            <td class="py-3">
+                                @php $sig = $stats['significance_by_variant'][$variant] ?? null; @endphp
+                                @if($sig)
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                        {{ $sig['confidence_level'] === 'high' ? 'bg-green-100 text-green-700' : ($sig['confidence_level'] === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500') }}"
+                                        title="{{ $sig['message'] }} (p = {{ $sig['p_value'] ?? 'n/a' }})">
+                                        {{ $sig['percentage'] }}%
                                     </span>
                                 @else
                                     <span class="text-gray-400">-</span>
@@ -293,7 +306,62 @@ This compares conversion rates between Control vs Test groups to determine if th
             window.variantChartInstance.update();
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
+        let timelineChartInstance = null;
+
+function loadTimelineChart(period) {
+    document.querySelectorAll('#timeline-period-switcher button').forEach(btn => {
+        const active = btn.dataset.period === period;
+        btn.classList.toggle('bg-gray-800', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('text-gray-600', !active);
+    });
+
+    fetch(buildApiUrl('/chart-data', { period }))
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) return;
+
+            const datasets = Object.entries(data.variants).map(([name, variant]) => ({
+                label: name,
+                data: variant.conversion_rate,
+                borderColor: variant.color,
+                backgroundColor: variant.color + '22',
+                tension: 0.3,
+                pointRadius: 2,
+                spanGaps: true,
+            }));
+
+            if (timelineChartInstance) {
+                timelineChartInstance.data.labels = data.labels;
+                timelineChartInstance.data.datasets = datasets;
+                timelineChartInstance.update();
+                return;
+            }
+
+            const ctx = document.getElementById('timelineChart');
+            if (!ctx || typeof Chart === 'undefined') return;
+            timelineChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { labels: data.labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: v => v + '%' } },
+                    },
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y}%` } },
+                    },
+                },
+            });
+        })
+        .catch(() => { /* chart is additive — a failed load never breaks the page */ });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadTimelineChart('24h');
             const variantCtx = document.getElementById('variantChart').getContext('2d');
             const variantNames = window.variantChartVariantNames;
             const initialCounts = window.variantChartEventCounts[window.variantChartInitialEvent] || {};
@@ -350,126 +418,54 @@ This compares conversion rates between Control vs Test groups to determine if th
     </div>
 </div>
 
-<!-- User Activity - Optimized for Large Datasets -->
-<div class="bg-white shadow-xl rounded border border-gray-100 mb-8">
-    <div class="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
-        <div class="flex items-center justify-between">
-            <div>
-                <h3 class="text-lg font-semibold text-gray-900">User Activity Analytics</h3>
-                <p class="text-sm text-gray-600 mt-1">{{ $stats['user_events']->count() }} users tracked</p>
-            </div>
-            <div class="flex items-center space-x-3">
-                <select id="activity-filter" class="px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    <option value="all">All Users</option>
-                    <option value="converted">Converted Only</option>
-                    <option value="high-activity">High Activity</option>
-                    <option value="recent">Recent Activity</option>
-                </select>
-            </div>
+@include('ab-testing::dashboard.partials.funnel')
+
+<!-- Conversion over time -->
+<div class="bg-white rounded shadow-lg p-6 mb-8 hover:shadow-xl transition-all duration-300">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h3 class="text-lg font-medium text-gray-900 flex items-center">
+            Conversion over time
+            <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
+               title="Assignment-cohort conversion rate: of the participants assigned in each time bucket, the share who ever converted (conversions count toward the bucket their user was assigned in)"></i>
+        </h3>
+        <div class="flex rounded border border-gray-200 overflow-hidden text-sm" id="timeline-period-switcher">
+            <button type="button" data-period="24h" class="px-3 py-1.5 bg-gray-800 text-white" onclick="loadTimelineChart('24h')">24h</button>
+            <button type="button" data-period="7d" class="px-3 py-1.5 text-gray-600 hover:bg-gray-100" onclick="loadTimelineChart('7d')">7d</button>
+            <button type="button" data-period="30d" class="px-3 py-1.5 text-gray-600 hover:bg-gray-100" onclick="loadTimelineChart('30d')">30d</button>
         </div>
     </div>
-
-    <!-- Summary Cards -->
-    <div class="p-6">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div class="bg-blue-50 rounded p-4 border border-blue-100">
-                <div class="text-2xl font-bold text-blue-600">{{ $stats['unique_users'] }}</div>
-                <div class="text-sm text-blue-700 font-medium">Total Users</div>
-            </div>
-            <div class="bg-green-50 rounded p-4 border border-green-100">
-                <div class="text-2xl font-bold text-green-600">{{ $stats['user_events']->where(function($user) { return collect($user['events'])->has('conversion'); })->count() }}</div>
-                <div class="text-sm text-green-700 font-medium">Converted Users</div>
-            </div>
-            <div class="bg-purple-50 rounded p-4 border border-purple-100">
-                <div class="text-2xl font-bold text-purple-600">{{ number_format($stats['total_interactions']) }}</div>
-                <div class="text-sm text-purple-700 font-medium">Total Interactions</div>
-            </div>
-            <div class="bg-orange-50 rounded p-4 border border-orange-100">
-                <div class="text-2xl font-bold text-orange-600">{{ number_format($stats['user_events']->avg('total_interactions'), 1) }}</div>
-                <div class="text-sm text-orange-700 font-medium">Avg per User</div>
-            </div>
-        </div>
-
-        <!-- Compact User List -->
-        <div id="user-activity-list" class="space-y-2 max-h-96 overflow-y-auto">
-            @if($stats['user_events']->count() > 0)
-                @foreach($stats['user_events']->take(20) as $index => $userData)
-                    <div class="user-activity-item border border-gray-200 rounded hover:shadow-md transition-all duration-200 cursor-pointer"
-                         data-variant="{{ $userData['variant'] }}"
-                         data-converted="{{ collect($userData['events'])->has('conversion') ? 'true' : 'false' }}"
-                         data-activity="{{ $userData['total_interactions'] }}"
-                         data-recent="{{ \Carbon\Carbon::parse($userData['last_activity'])->diffInHours() < 24 ? 'true' : 'false' }}"
-                         onclick="showUserDetails({{ $index }}, @js($userData))">
-                        <div class="p-4">
-                            <div class="flex items-center justify-between">
-                                <div class="flex items-center space-x-3">
-                                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white font-bold text-sm">
-                                        {{ strtoupper(substr($userData['user_id'], 0, 2)) }}
-                                    </div>
-                                    <div>
-                                        <div class="flex items-center space-x-2">
-                                            <span class="font-semibold text-gray-900">User {{ substr($userData['user_id'], 0, 8) }}...</span>
-                                            <span class="px-2 py-1 bg-{{ $userData['variant'] === 'control' ? 'gray' : 'blue' }}-100 text-{{ $userData['variant'] === 'control' ? 'gray' : 'blue' }}-800 rounded-full text-xs font-medium">
-                                                {{ $userData['variant'] }}
-                                            </span>
-                                            @if(collect($userData['events'])->has('conversion'))
-                                                <span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                                                    ✓ Converted
-                                                </span>
-                                            @endif
-                                        </div>
-                                        <div class="text-sm text-gray-500 mt-1">
-                                            {{ $userData['total_interactions'] }} interactions • {{ $userData['unique_events'] }} event types • Last: {{ \Carbon\Carbon::parse($userData['last_activity'])->diffForHumans() }}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="flex items-center space-x-2">
-                                    <div class="text-right">
-                                        <div class="text-sm font-medium text-gray-900">{{ \Carbon\Carbon::parse($userData['first_activity'])->format('M j') }}</div>
-                                        <div class="text-xs text-gray-500">First seen</div>
-                                    </div>
-                                    <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                @endforeach
-
-                @if($stats['user_events']->count() > 20)
-                    <div class="text-center py-4">
-                        <button onclick="loadMoreUsers()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors font-medium">
-                            Load More Users ({{ $stats['user_events']->count() - 20 }} remaining)
-                        </button>
-                    </div>
-                @endif
-            @else
-                <div class="text-center py-12">
-                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                    <h3 class="mt-2 text-sm font-medium text-gray-900">No user activity yet</h3>
-                    <p class="mt-1 text-sm text-gray-500">Activity will appear here as users interact with your experiment</p>
-                </div>
-            @endif
+    <div class="h-72">
+        <canvas id="timelineChart"></canvas>
     </div>
 </div>
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-let statsData = @json($stats);
+// Only what the live-update JS needs before its first poll — the full stats
+// array carried every user's event history into page source.
+@php
+    $initialStatsPayload = [
+        'success' => true,
+        'total_assignments' => $stats['total_assignments'],
+        'total_conversions' => $stats['total_conversions'],
+        'statistical_significance' => $stats['statistical_significance'],
+        'significance_by_variant' => $stats['significance_by_variant'],
+        'rate_change_pp' => $stats['rate_change_pp'],
+    ];
+@endphp
+let statsData = @json($initialStatsPayload);
 let experimentData = {
     isActive: {{ $experiment->is_active ? 'true' : 'false' }},
     id: {{ $experiment->id }}
 };
 window.activeDeviceType = @json($activeDeviceType);
 
-function buildApiUrl(path) {
-    const base = `/api/ab-testing/experiments/${experimentData.id}${path}`;
-    return window.activeDeviceType ? `${base}?device_type=${encodeURIComponent(window.activeDeviceType)}` : base;
+function buildApiUrl(path, params = {}) {
+    const url = new URL(`/api/ab-testing/experiments/${experimentData.id}${path}`, window.location.origin);
+    if (window.activeDeviceType) url.searchParams.set('device_type', window.activeDeviceType);
+    Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+    return url.pathname + url.search;
 }
 
 function handleDeviceFilterChange(value) {
@@ -500,6 +496,8 @@ function startRealTimeUpdates() {
         await fetchRecentActivity();
         updateLiveIndicators();
     }, 10000); // Update every 10 seconds for real data
+
+    setInterval(refreshFunnel, 60000); // Funnel on a slower cadence
 }
 
 async function fetchLatestStats() {
@@ -515,33 +513,92 @@ async function fetchLatestStats() {
 }
 
 function updateLiveIndicators() {
-    if (!statsData) return;
-    
-    // Update statistical significance if available
-    if (statsData.statistical_significance) {
-        const significance = statsData.statistical_significance;
-        
-        // Update significance percentage
-        const significanceElements = document.querySelectorAll('.text-2xl.font-bold');
-        const significanceElement = significanceElements[significanceElements.length - 1]; // Last one should be significance
-        
-        if (significanceElement && significanceElement.textContent.includes('%')) {
-            significanceElement.textContent = significance.percentage + '%';
-            
-            // Update color based on confidence level
-            significanceElement.className = `text-2xl font-bold mb-1 ${
-                significance.confidence_level === 'high' ? 'text-green-600' : 
-                significance.confidence_level === 'medium' ? 'text-yellow-600' : 
+    if (!statsData || !statsData.success) return;
+
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    };
+
+    setText('stat-participants', Number(statsData.total_assignments).toLocaleString());
+    setText('stat-conversions', Number(statsData.total_conversions).toLocaleString());
+    const rate = statsData.total_assignments > 0
+        ? ((statsData.total_conversions / statsData.total_assignments) * 100).toFixed(2)
+        : '0.00';
+    setText('stat-rate', rate + '%');
+
+    const significance = statsData.statistical_significance;
+    if (significance) {
+        const pct = document.getElementById('significance-percentage');
+        if (pct) {
+            pct.textContent = significance.percentage + '%';
+            pct.className = `text-2xl font-bold mb-1 ${
+                significance.confidence_level === 'high' ? 'text-green-600' :
+                significance.confidence_level === 'medium' ? 'text-yellow-600' :
                 'text-red-600'
             }`;
         }
-        
-        // Update message
-        const messageElement = document.getElementById('significance-message');
-        if (messageElement) {
-            messageElement.textContent = significance.message;
+        setText('significance-message', significance.message + (significance.variant ? ` · ${significance.variant}` : ''));
+    }
+
+    // Per-variant table cells
+    Object.entries(statsData.variants || {}).forEach(([variant, data]) => {
+        setText(`row-${variant}-participants`, Number(data.participants).toLocaleString());
+        setText(`row-${variant}-conversions`, Number(data.conversions).toLocaleString());
+        setText(`row-${variant}-rate`, data.rate + '%');
+    });
+
+    // Donut: refresh the client-side event-count blob and re-render the
+    // currently selected event
+    if (statsData.event_counts_by_name && window.variantChartInstance) {
+        window.variantChartEventCounts = statsData.event_counts_by_name;
+        const select = document.getElementById('variant-chart-event');
+        if (select && typeof updateVariantChart === 'function') {
+            updateVariantChart(select.value);
         }
     }
+}
+
+// Funnel refreshes on its own slower cadence — its counts are heavier to
+// compute, and step shapes only drift meaningfully over minutes.
+async function refreshFunnel() {
+    try {
+        const response = await fetch(buildApiUrl('/stats', { include: 'funnel' }));
+        if (!response.ok) return;
+        const data = await response.json();
+        const funnel = data.funnel;
+        if (!funnel || !funnel.steps) return;
+
+        funnel.steps.forEach((step, i) => {
+            Object.entries(step.counts || {}).forEach(([variant, count]) => {
+                const bar = document.querySelector(`[data-funnel-bar="${variant}:${step.key}"]`);
+                if (bar) {
+                    const base = Math.max(funnel.steps[0].counts?.[variant] ?? 0, 1);
+                    const pct = Math.min(100, (count / base) * 100);
+                    bar.style.width = Math.max(pct, 18) + '%';
+                    bar.style.opacity = (0.55 + 0.45 * (pct / 100)).toFixed(2);
+                    const countEl = bar.querySelector('span.font-semibold');
+                    if (countEl) countEl.textContent = Number(count).toLocaleString();
+                }
+                if (i > 0 && count > 0) {
+                    // count === 0 keeps the server-rendered "not fired by this
+                    // arm" label — a structural zero is not a 0% retention.
+                    // Denominator = the arm's previous REACHED step, matching
+                    // the server-rendered partial's semantics exactly.
+                    let prev = 0;
+                    for (let j = i - 1; j >= 0; j--) {
+                        const c = funnel.steps[j].counts?.[variant] ?? 0;
+                        if (j === 0 || c > 0) { prev = c; break; }
+                    }
+                    const label = document.querySelector(`[data-funnel-retention="${variant}:${step.key}"]`);
+                    if (label && prev > 0) {
+                        const keepBadge = label.textContent.includes('biggest drop');
+                        label.innerHTML = `<i class="fas fa-arrow-down mr-1"></i>${((count / prev) * 100).toFixed(1)}% continue${keepBadge ? ' · biggest drop' : ''}`;
+                    }
+                }
+            });
+        });
+    } catch (error) { /* funnel refresh is additive — never break the page */ }
 }
 
 async function fetchRecentActivity() {
@@ -624,67 +681,8 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchRecentActivity(); // Load initial activity data
 });
 
-// User Activity Functions
-function filterUserActivity() {
-    const filter = document.getElementById('activity-filter').value;
-    const items = document.querySelectorAll('.user-activity-item');
 
-    items.forEach(item => {
-        let show = false;
 
-        switch(filter) {
-            case 'all':
-                show = true;
-                break;
-            case 'converted':
-                show = item.dataset.converted === 'true';
-                break;
-            case 'high-activity':
-                show = parseInt(item.dataset.activity) > 10;
-                break;
-            case 'recent':
-                show = item.dataset.recent === 'true';
-                break;
-        }
 
-        item.style.display = show ? 'block' : 'none';
-    });
-}
-
-function showUserDetails(index, userData) {
-    // Create modal or detailed view for user
-    console.log('User details:', userData);
-    alert(`User Details:\nID: ${userData.user_id}\nVariant: ${userData.variant}\nTotal Interactions: ${userData.total_interactions}\nUnique Events: ${userData.unique_events}`);
-}
-
-function loadMoreUsers() {
-    // Ajax call to load more users
-    console.log('Loading more users...');
-}
-
-// Add event listener for filter
-document.addEventListener('DOMContentLoaded', function() {
-    const filterSelect = document.getElementById('activity-filter');
-    if (filterSelect) {
-        filterSelect.addEventListener('change', filterUserActivity);
-    }
-});
-
-function toggleAccordion(id) {
-    const content = document.getElementById(id);
-    const icon = document.getElementById('icon-' + id);
-
-    if (content.classList.contains('hidden')) {
-        content.classList.remove('hidden');
-        icon.classList.add('rotate-180');
-    } else {
-        content.classList.add('hidden');
-        icon.classList.remove('rotate-180');
-    }
-}
 </script>
-
-<!-- FontAwesome for icons -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-</div>
 @endsection
