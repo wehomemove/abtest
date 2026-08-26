@@ -384,6 +384,37 @@ class ApiControllerTest extends TestCase
     }
 
     /** @test */
+    public function chart_data_attributes_conversions_to_the_assignment_cohort()
+    {
+        $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([
+            'name' => 'chart_cohort_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        // One user assigned ~20h ago converts ~1h ago: the conversion must
+        // land in the ASSIGNMENT bucket, and no bucket may exceed 100%.
+        \Illuminate\Support\Facades\DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'early', 'variant' => 'control', 'created_at' => now()->subHours(20), 'updated_at' => now()->subHours(20)],
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'early', 'variant' => 'control', 'event_name' => 'conversion', 'properties' => '{"count":1}', 'created_at' => now()->subHour(), 'updated_at' => now()->subHour()],
+        ]);
+
+        $data = $this->getJson("/api/ab-testing/experiments/{$experimentId}/chart-data?period=24h")->json();
+
+        $participants = $data['variants']['control']['participants'];
+        $rates = array_map('floatval', $data['variants']['control']['conversion_rate']);
+        $assignedBucket = array_search(1, $participants, true);
+
+        $this->assertNotFalse($assignedBucket, 'assignment must appear in a bucket');
+        $this->assertSame(100.0, $rates[$assignedBucket], 'conversion belongs to the assignment cohort');
+        $this->assertLessThanOrEqual(100.0, max($rates), 'no bucket may exceed 100%');
+        $this->assertSame(100.0, array_sum($rates), 'no other bucket may carry the conversion');
+    }
+
+    /** @test */
     public function chart_data_clamps_unknown_periods_to_24h()
     {
         $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([

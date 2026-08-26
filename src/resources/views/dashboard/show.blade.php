@@ -426,7 +426,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <h3 class="text-lg font-medium text-gray-900 flex items-center">
             Conversion over time
             <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
-               title="Conversion rate per variant within each time bucket (converters ÷ participants assigned in that bucket)"></i>
+               title="Assignment-cohort conversion rate: of the participants assigned in each time bucket, the share who ever converted (conversions count toward the bucket their user was assigned in)"></i>
         </h3>
         <div class="flex rounded border border-gray-200 overflow-hidden text-sm" id="timeline-period-switcher">
             <button type="button" data-period="24h" class="px-3 py-1.5 bg-gray-800 text-white" onclick="loadTimelineChart('24h')">24h</button>

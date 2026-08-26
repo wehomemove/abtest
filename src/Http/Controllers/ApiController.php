@@ -302,10 +302,13 @@ class ApiController extends Controller
     }
 
     /**
-     * Per-variant time series for the "Conversion over time" chart: for each
-     * bucket, participants assigned and the cumulative-in-window conversion
-     * rate per arm. Two grouped queries total, bucketed in PHP — portable
-     * across SQLite (tests) and MySQL/Postgres, and O(rows) not O(buckets).
+     * Per-variant time series for the "Conversion over time" chart, by
+     * ASSIGNMENT COHORT: each bucket counts the participants assigned in it,
+     * and the rate is the share of that cohort that ever converted (conversions
+     * are attributed to the converter's assignment bucket, not the conversion
+     * moment — mixing the two lets late converters push a bucket past 100%).
+     * Two queries total, bucketed in PHP — portable across SQLite (tests) and
+     * MySQL/Postgres, and O(rows) not O(buckets).
      */
     public function getChartData(Request $request, $experimentId)
     {
@@ -331,13 +334,14 @@ class ApiController extends Controller
             $assignmentRows = $experiment->assignments()
                 ->where('created_at', '>=', $startTime)
                 ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
-                ->get(['variant', 'created_at']);
+                ->get(['variant', 'user_id', 'created_at']);
 
+            // No time filter: a conversion belongs to its user's assignment
+            // cohort regardless of when it happened.
             $conversionRows = $experiment->events()
                 ->where('event_name', 'conversion')
-                ->where('created_at', '>=', $startTime)
                 ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
-                ->get(['variant', 'user_id', 'created_at'])
+                ->get(['variant', 'user_id'])
                 ->unique(fn ($row) => $row->variant . '|' . $row->user_id);
 
             $series = [];
@@ -347,15 +351,19 @@ class ApiController extends Controller
                     'conversions' => array_fill(0, $points, 0),
                 ];
             }
+
+            // user|variant => the bucket they were ASSIGNED in.
+            $assignmentBucket = [];
             foreach ($assignmentRows as $row) {
                 $bucket = $bucketFor($row->created_at);
                 if ($bucket !== null && $bucket < $points && isset($series[$row->variant])) {
                     $series[$row->variant]['participants'][$bucket]++;
+                    $assignmentBucket[$row->variant . '|' . $row->user_id] = $bucket;
                 }
             }
             foreach ($conversionRows as $row) {
-                $bucket = $bucketFor($row->created_at);
-                if ($bucket !== null && $bucket < $points && isset($series[$row->variant])) {
+                $bucket = $assignmentBucket[$row->variant . '|' . $row->user_id] ?? null;
+                if ($bucket !== null && isset($series[$row->variant])) {
                     $series[$row->variant]['conversions'][$bucket]++;
                 }
             }
