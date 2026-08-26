@@ -14,6 +14,7 @@ class UserAssignment extends Model
         'user_id',
         'variant',
         'assigned_at',
+        'device_type',
     ];
 
     protected $casts = [

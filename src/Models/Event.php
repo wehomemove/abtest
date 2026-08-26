@@ -16,6 +16,7 @@ class Event extends Model
         'event_name',
         'properties',
         'event_time',
+        'device_type',
     ];
 
     protected $casts = [

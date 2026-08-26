@@ -235,7 +235,7 @@ class DashboardControllerTest extends TestCase
     {
         $experimentId = DB::table('ab_experiments')->insertGetId([
             'name' => 'same_name_test',
-            'variants' => json_encode(['control' => 100]),
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
             'traffic_allocation' => 100,
             'is_active' => true,
             'created_at' => now(),
@@ -244,7 +244,7 @@ class DashboardControllerTest extends TestCase
 
         $response = $this->put("/ab-testing/dashboard/{$experimentId}", [
             'name' => 'same_name_test', // Same name should be allowed for updates
-            'variants' => ['control' => 100],
+            'variants' => ['control' => 50, 'variant_b' => 50],
             'traffic_allocation' => 100,
             'is_active' => true,
         ]);
