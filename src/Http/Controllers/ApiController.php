@@ -312,75 +312,93 @@ class ApiController extends Controller
         }
     }
 
+    /**
+     * Per-variant time series for the "Conversion over time" chart: for each
+     * bucket, participants assigned and the cumulative-in-window conversion
+     * rate per arm. Two grouped queries total, bucketed in PHP — portable
+     * across SQLite (tests) and MySQL/Postgres, and O(rows) not O(buckets).
+     */
     public function getChartData(Request $request, $experimentId)
     {
         try {
             $experiment = Experiment::findOrFail($experimentId);
-            $period = $request->get('period', '24h');
+            $period = in_array($request->get('period'), ['24h', '7d', '30d'], true) ? $request->get('period') : '24h';
             $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
 
-            // Calculate time range
             $now = now();
-            switch ($period) {
-                case '24h':
-                    $startTime = $now->copy()->subHours(24);
-                    $interval = 'hour';
-                    $points = 24;
-                    break;
-                case '7d':
-                    $startTime = $now->copy()->subDays(7);
-                    $interval = 'day';
-                    $points = 7;
-                    break;
-                case '30d':
-                    $startTime = $now->copy()->subDays(30);
-                    $interval = 'day';
-                    $points = 10; // Show every 3 days
-                    break;
-                default:
-                    $startTime = $now->copy()->subHours(24);
-                    $interval = 'hour';
-                    $points = 24;
+            [$startTime, $intervalMinutes, $points, $labelFormat] = match ($period) {
+                '7d' => [$now->copy()->subDays(7)->startOfDay(), 1440, 8, 'M j'],
+                '30d' => [$now->copy()->subDays(30)->startOfDay(), 1440, 31, 'M j'],
+                default => [$now->copy()->subHours(24)->startOfHour(), 60, 25, 'H:00'],
+            };
+
+            $variantNames = array_keys($experiment->variants ?? []);
+            $bucketFor = function ($timestamp) use ($startTime, $intervalMinutes) {
+                $minutes = $startTime->diffInMinutes(\Illuminate\Support\Carbon::parse($timestamp), false);
+
+                return $minutes < 0 ? null : intdiv((int) $minutes, $intervalMinutes);
+            };
+
+            $assignmentRows = $experiment->assignments()
+                ->where('created_at', '>=', $startTime)
+                ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
+                ->get(['variant', 'created_at']);
+
+            $conversionRows = $experiment->events()
+                ->where('event_name', 'conversion')
+                ->where('created_at', '>=', $startTime)
+                ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
+                ->get(['variant', 'user_id', 'created_at'])
+                ->unique(fn ($row) => $row->variant . '|' . $row->user_id);
+
+            $series = [];
+            foreach ($variantNames as $variant) {
+                $series[$variant] = [
+                    'participants' => array_fill(0, $points, 0),
+                    'conversions' => array_fill(0, $points, 0),
+                ];
+            }
+            foreach ($assignmentRows as $row) {
+                $bucket = $bucketFor($row->created_at);
+                if ($bucket !== null && $bucket < $points && isset($series[$row->variant])) {
+                    $series[$row->variant]['participants'][$bucket]++;
+                }
+            }
+            foreach ($conversionRows as $row) {
+                $bucket = $bucketFor($row->created_at);
+                if ($bucket !== null && $bucket < $points && isset($series[$row->variant])) {
+                    $series[$row->variant]['conversions'][$bucket]++;
+                }
             }
 
-            // Get conversion rates over time
-            $values = [];
+            $labels = [];
             for ($i = 0; $i < $points; $i++) {
-                $timePoint = $interval === 'hour'
-                    ? $startTime->copy()->addHours($i)
-                    : $startTime->copy()->addDays($i * ($period === '30d' ? 3 : 1));
+                $labels[] = $startTime->copy()->addMinutes($i * $intervalMinutes)->format($labelFormat);
+            }
 
-                $nextTimePoint = $interval === 'hour'
-                    ? $timePoint->copy()->addHour()
-                    : $timePoint->copy()->addDay();
-
-                // Get assignments and conversions in this time period
-                $assignmentsQuery = $experiment->assignments()
-                    ->whereBetween('created_at', [$timePoint, $nextTimePoint]);
-                $conversionsQuery = $experiment->events()
-                    ->where('event_name', 'conversion')
-                    ->whereBetween('created_at', [$timePoint, $nextTimePoint]);
-
-                if ($deviceType !== null) {
-                    $assignmentsQuery->where('device_type', $deviceType);
-                    $conversionsQuery->where('device_type', $deviceType);
+            $variants = [];
+            foreach ($variantNames as $variant) {
+                $rates = [];
+                foreach ($series[$variant]['participants'] as $i => $assigned) {
+                    $rates[] = $assigned > 0
+                        ? round(($series[$variant]['conversions'][$i] / $assigned) * 100, 2)
+                        : 0;
                 }
-
-                $assignments = $assignmentsQuery->count();
-                $conversions = $conversionsQuery->distinct('user_id')->count();
-
-                $rate = $assignments > 0 ? round(($conversions / $assignments) * 100, 2) : 0;
-                $values[] = $rate;
+                $variants[$variant] = [
+                    'participants' => $series[$variant]['participants'],
+                    'conversion_rate' => $rates,
+                    'color' => $this->getVariantColor($variant),
+                ];
             }
 
             return response()->json([
                 'success' => true,
-                'values' => $values,
+                'labels' => $labels,
+                'variants' => $variants,
                 'period' => $period,
                 'start_time' => $startTime->toISOString(),
-                'end_time' => $now->toISOString()
+                'end_time' => $now->toISOString(),
             ]);
-
         } catch (\Exception $e) {
             \Log::error('A/B Test chart data error: ' . $e->getMessage());
 

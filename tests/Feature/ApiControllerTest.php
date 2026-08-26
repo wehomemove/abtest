@@ -348,4 +348,54 @@ class ApiControllerTest extends TestCase
                     ]
                 ]);
     }
+
+    /** @test */
+    public function chart_data_returns_per_variant_series()
+    {
+        $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([
+            'name' => 'chart_data_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'created_at' => now()->subHours(2), 'updated_at' => now()->subHours(2)],
+            ['experiment_id' => $experimentId, 'user_id' => 'u2', 'variant' => 'variant_b', 'created_at' => now()->subHours(2), 'updated_at' => now()->subHours(2)],
+        ]);
+        \Illuminate\Support\Facades\DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u2', 'variant' => 'variant_b', 'event_name' => 'conversion', 'properties' => '{"count":1}', 'created_at' => now()->subHours(2), 'updated_at' => now()->subHours(2)],
+        ]);
+
+        $response = $this->getJson("/api/ab-testing/experiments/{$experimentId}/chart-data?period=24h");
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('period', '24h')
+            ->assertJsonStructure(['labels', 'variants' => ['control' => ['participants', 'conversion_rate', 'color'], 'variant_b' => ['participants', 'conversion_rate', 'color']]]);
+
+        $data = $response->json();
+        $this->assertCount(25, $data['labels']);
+        $this->assertSame(1, array_sum($data['variants']['control']['participants']));
+        $this->assertSame(1, array_sum($data['variants']['variant_b']['participants']));
+        // variant_b's converting bucket shows 100%, control never converts
+        $this->assertContains(100.0, array_map('floatval', $data['variants']['variant_b']['conversion_rate']));
+        $this->assertSame(0.0, max(array_map('floatval', $data['variants']['control']['conversion_rate'])));
+    }
+
+    /** @test */
+    public function chart_data_clamps_unknown_periods_to_24h()
+    {
+        $experimentId = \Illuminate\Support\Facades\DB::table('ab_experiments')->insertGetId([
+            'name' => 'chart_period_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->getJson("/api/ab-testing/experiments/{$experimentId}/chart-data?period=nonsense")
+            ->assertOk()
+            ->assertJsonPath('period', '24h');
+    }
 }

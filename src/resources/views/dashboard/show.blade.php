@@ -308,7 +308,62 @@ Each arm's own confidence vs control is in the table below."></i>
             window.variantChartInstance.update();
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
+        let timelineChartInstance = null;
+
+function loadTimelineChart(period) {
+    document.querySelectorAll('#timeline-period-switcher button').forEach(btn => {
+        const active = btn.dataset.period === period;
+        btn.classList.toggle('bg-gray-800', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('text-gray-600', !active);
+    });
+
+    fetch(buildApiUrl(`/api/ab-testing/experiments/${experimentData.id}/chart-data`) + `&period=${period}`)
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) return;
+
+            const datasets = Object.entries(data.variants).map(([name, variant]) => ({
+                label: name,
+                data: variant.conversion_rate,
+                borderColor: variant.color,
+                backgroundColor: variant.color + '22',
+                tension: 0.3,
+                pointRadius: 2,
+                spanGaps: true,
+            }));
+
+            if (timelineChartInstance) {
+                timelineChartInstance.data.labels = data.labels;
+                timelineChartInstance.data.datasets = datasets;
+                timelineChartInstance.update();
+                return;
+            }
+
+            const ctx = document.getElementById('timelineChart');
+            if (!ctx || typeof Chart === 'undefined') return;
+            timelineChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { labels: data.labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: v => v + '%' } },
+                    },
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y}%` } },
+                    },
+                },
+            });
+        })
+        .catch(() => { /* chart is additive — a failed load never breaks the page */ });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadTimelineChart('24h');
             const variantCtx = document.getElementById('variantChart').getContext('2d');
             const variantNames = window.variantChartVariantNames;
             const initialCounts = window.variantChartEventCounts[window.variantChartInitialEvent] || {};
@@ -362,6 +417,25 @@ Each arm's own confidence vs control is in the table below."></i>
                 <!-- Real activity will load here via JavaScript -->
             </div>
         </div>
+    </div>
+</div>
+
+<!-- Conversion over time -->
+<div class="bg-white rounded shadow-lg p-6 mb-8 hover:shadow-xl transition-all duration-300">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h3 class="text-lg font-medium text-gray-900 flex items-center">
+            Conversion over time
+            <i class="fas fa-info-circle text-gray-400 ml-2 text-sm cursor-help"
+               title="Conversion rate per variant within each time bucket (converters ÷ participants assigned in that bucket)"></i>
+        </h3>
+        <div class="flex rounded border border-gray-200 overflow-hidden text-sm" id="timeline-period-switcher">
+            <button type="button" data-period="24h" class="px-3 py-1.5 bg-gray-800 text-white" onclick="loadTimelineChart('24h')">24h</button>
+            <button type="button" data-period="7d" class="px-3 py-1.5 text-gray-600 hover:bg-gray-100" onclick="loadTimelineChart('7d')">7d</button>
+            <button type="button" data-period="30d" class="px-3 py-1.5 text-gray-600 hover:bg-gray-100" onclick="loadTimelineChart('30d')">30d</button>
+        </div>
+    </div>
+    <div class="h-72">
+        <canvas id="timelineChart"></canvas>
     </div>
 </div>
 
