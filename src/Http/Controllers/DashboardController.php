@@ -187,53 +187,6 @@ class DashboardController extends Controller
         $conversions = array_map(fn ($v) => $v['converted'], $unfilteredVariantStats);
         $eventCountsByName = $statsService->eventCountsByName($experiment, $deviceType);
 
-        // Get user-organized event data
-        $userEventsQuery = Event::where('experiment_id', $experiment->id);
-        if ($deviceType !== null) {
-            $userEventsQuery->where('device_type', $deviceType);
-        }
-        $userEvents = $userEventsQuery
-            ->orderBy('updated_at', 'desc')
-            ->get()
-            ->groupBy('user_id')
-            ->map(function ($events, $userId) {
-                $userVariant = $events->first()->variant;
-                $totalInteractions = 0;
-                $eventSummary = [];
-
-                foreach ($events as $event) {
-                    $properties = is_string($event->properties)
-                        ? json_decode($event->properties, true) ?? []
-                        : (is_array($event->properties) ? $event->properties : []);
-                    $count = $properties['count'] ?? 1;
-                    $totalInteractions += $count;
-
-                    if (!isset($eventSummary[$event->event_name])) {
-                        $eventSummary[$event->event_name] = [
-                            'count' => 0,
-                            'last_occurred' => $event->updated_at,
-                        ];
-                    }
-
-                    $eventSummary[$event->event_name]['count'] += $count;
-                    if ($event->updated_at > $eventSummary[$event->event_name]['last_occurred']) {
-                        $eventSummary[$event->event_name]['last_occurred'] = $event->updated_at;
-                    }
-                }
-
-                return [
-                    'user_id' => $userId,
-                    'variant' => $userVariant,
-                    'total_interactions' => $totalInteractions,
-                    'unique_events' => count($eventSummary),
-                    'events' => $eventSummary,
-                    'last_activity' => $events->max('updated_at'),
-                    'first_activity' => $events->min('created_at'),
-                ];
-            })
-            ->sortByDesc('last_activity')
-            ->values();
-
         // When an event filter is active, the Variant Performance table switches to funnel
         // mode: participants = users who fired $eventFilter, converted = those who also
         // fired 'conversion'. Top stat cards, chart, and significance keep their unfiltered
@@ -294,15 +247,7 @@ class DashboardController extends Controller
             $totalEventsQuery->where('device_type', $deviceType);
         }
         $totalEvents = (clone $totalEventsQuery)->count();
-        $totalInteractions = (clone $totalEventsQuery)
-            ->get()
-            ->sum(function ($event) {
-                $properties = is_string($event->properties)
-                    ? json_decode($event->properties, true) ?? []
-                    : (is_array($event->properties) ? $event->properties : []);
-
-                return $properties['count'] ?? 1;
-            });
+        $uniqueUsers = (clone $totalEventsQuery)->distinct('user_id')->count('user_id');
 
         // Today's stats (from midnight today)
         $todayStart = now()->startOfDay();
@@ -334,9 +279,7 @@ class DashboardController extends Controller
             'total_assignments' => array_sum($assignments),
             'total_conversions' => array_sum($conversions),
             'total_events' => $totalEvents,
-            'total_interactions' => $totalInteractions,
-            'unique_users' => $userEvents->count(),
-            'user_events' => $userEvents,
+            'unique_users' => $uniqueUsers,
             'today_assignments' => $todayAssignments,
             'today_conversions' => $todayConversions,
             'statistical_significance' => $significance,

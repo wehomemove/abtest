@@ -337,7 +337,6 @@ class DashboardControllerTest extends TestCase
         $this->assertEquals(3, $stats['total_assignments']);
         $this->assertEquals(2, $stats['total_conversions']);
         $this->assertEquals(3, $stats['total_events']);
-        $this->assertEquals(5, $stats['total_interactions']); // 1 + 3 + 1
         $this->assertEquals(2, $stats['unique_users']); // user1 and user3
 
         // Variant stats
@@ -535,43 +534,4 @@ class DashboardControllerTest extends TestCase
         $this->assertEquals(0, $stats['variants']['control']['conversion_rate']);
     }
 
-    /** @test */
-    public function it_groups_user_events_correctly()
-    {
-        $experimentId = DB::table('ab_experiments')->insertGetId([
-            'name' => 'user_events_test',
-            'variants' => json_encode(['control' => 100]),
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        DB::table('ab_user_assignments')->insert([
-            ['experiment_id' => $experimentId, 'user_id' => 'user1', 'variant' => 'control', 'created_at' => now(), 'updated_at' => now()],
-        ]);
-
-        $baseTime = now();
-        DB::table('ab_events')->insert([
-            ['experiment_id' => $experimentId, 'user_id' => 'user1', 'variant' => 'control', 'event_name' => 'click', 'properties' => '{"count": 2}', 'created_at' => $baseTime, 'updated_at' => $baseTime],
-            ['experiment_id' => $experimentId, 'user_id' => 'user1', 'variant' => 'control', 'event_name' => 'conversion', 'properties' => '{"count": 1}', 'created_at' => $baseTime->addMinute(), 'updated_at' => $baseTime->addMinute()],
-        ]);
-
-        $response = $this->get("/ab-testing/dashboard/{$experimentId}");
-
-        $stats = $response->viewData('stats');
-        $userEvents = $stats['user_events'];
-
-        $this->assertCount(1, $userEvents);
-        
-        $user = $userEvents->first();
-        $this->assertEquals('user1', $user['user_id']);
-        $this->assertEquals('control', $user['variant']);
-        $this->assertEquals(3, $user['total_interactions']); // 2 + 1
-        $this->assertEquals(2, $user['unique_events']); // click, conversion
-        
-        $this->assertArrayHasKey('click', $user['events']);
-        $this->assertArrayHasKey('conversion', $user['events']);
-        $this->assertEquals(2, $user['events']['click']['count']);
-        $this->assertEquals(1, $user['events']['conversion']['count']);
-    }
 }
