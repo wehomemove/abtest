@@ -20,6 +20,16 @@ class AbTestService
      */
     public function variant(string $experimentName, $userId = null): string
     {
+        // Central bot gate: crawlers resolve to control with no cookie, no
+        // session, no assignment row — for every experiment, so no individual
+        // test's routes can forget to guard. Explicit $userId bypasses the
+        // gate (server-side attribution of already-verified participants).
+        if ($userId === null
+            && config('ab-testing.bot_filtering', true)
+            && \Homemove\AbTesting\Support\BotDetector::currentRequestIsBot()) {
+            return 'control';
+        }
+
         $userId = $userId ?? $this->getSessionUserId();
 
         // Check for debug override cookie first — bypasses device gating so QA can force any variant.
@@ -139,6 +149,13 @@ class AbTestService
      */
     public function track(string $experimentName, $userId = null, string $eventName = 'conversion', array $properties = []): void
     {
+        // Same central bot gate as variant() — see there.
+        if ($userId === null
+            && config('ab-testing.bot_filtering', true)
+            && \Homemove\AbTesting\Support\BotDetector::currentRequestIsBot()) {
+            return;
+        }
+
         $userId = $userId ?? $this->getSessionUserId();
         $variant = $this->variant($experimentName, $userId);
         $device = $this->detectDeviceType();

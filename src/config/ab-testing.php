@@ -18,6 +18,11 @@ return [
         'events_table' => 'ab_events',
     ],
 
+    // Refuse assignments and events for crawler user agents (see
+    // Support\BotDetector). On by default: bots inflate every arm of every
+    // experiment with cookie-less phantom participants.
+    'bot_filtering' => env('AB_TESTING_BOT_FILTERING', true),
+
     'session_key' => 'ab_user_id',
 
     'tracking' => [
