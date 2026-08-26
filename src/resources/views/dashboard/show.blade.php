@@ -583,7 +583,13 @@ async function refreshFunnel() {
                 if (i > 0 && count > 0) {
                     // count === 0 keeps the server-rendered "not fired by this
                     // arm" label — a structural zero is not a 0% retention.
-                    const prev = funnel.steps[i - 1].counts?.[variant] ?? 0;
+                    // Denominator = the arm's previous REACHED step, matching
+                    // the server-rendered partial's semantics exactly.
+                    let prev = 0;
+                    for (let j = i - 1; j >= 0; j--) {
+                        const c = funnel.steps[j].counts?.[variant] ?? 0;
+                        if (j === 0 || c > 0) { prev = c; break; }
+                    }
                     const label = document.querySelector(`[data-funnel-retention="${variant}:${step.key}"]`);
                     if (label && prev > 0) {
                         const keepBadge = label.textContent.includes('biggest drop');

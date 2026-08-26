@@ -31,6 +31,21 @@ class BotGateTest extends TestCase
     }
 
     /** @test */
+    public function embedded_in_app_browsers_are_humans_and_their_crawlers_are_not()
+    {
+        // Real people arriving through social in-app browsers must never be
+        // excluded from experiments.
+        $this->assertFalse(BotDetector::isBot('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Twitter for iPhone/10.0'));
+        $this->assertFalse(BotDetector::isBot('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBDV/iPhone14,2;FBMD/iPhone]'));
+        $this->assertFalse(BotDetector::isBot('Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/447.0.0.0]'));
+
+        // The platforms' actual crawlers stay classified as bots.
+        $this->assertTrue(BotDetector::isBot('facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'));
+        $this->assertTrue(BotDetector::isBot('Twitterbot/1.0'));
+        $this->assertTrue(BotDetector::isBot('Facebot/1.0'));
+    }
+
+    /** @test */
     public function a_bot_request_resolves_to_control_and_mints_nothing()
     {
         $this->makeExperiment();

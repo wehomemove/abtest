@@ -11,11 +11,20 @@ namespace Homemove\AbTesting\Support;
  */
 class BotDetector
 {
-    /** @var array<int, string> */
+    /**
+     * Crawler-specific by intent: generic vendor names would misclassify the
+     * embedded in-app browsers real humans arrive in ("Twitter for iPhone",
+     * Facebook's FBAN/FB_IAB webviews) — and a human misread as a bot here is
+     * silently excluded from every experiment. Hence twitterbot /
+     * facebookexternalhit rather than the bare vendor substrings some legacy
+     * analytics lists use.
+     *
+     * @var array<int, string>
+     */
     public const SIGNATURES = [
-        'adsbot', 'lighthouse', 'google.com', 'preview', 'facebook', 'bingbot',
+        'adsbot', 'lighthouse', 'google.com', 'preview', 'facebookexternalhit', 'facebot', 'bingbot',
         'bing.com', 'yahoo', 'baidu', 'duckduckgo', 'yandex', 'exabot', 'sogou',
-        'applebot', 'twitter', 'headlesschrome', 'robot', 'semrush', 'ahrefs',
+        'applebot', 'twitterbot', 'headlesschrome', 'robot', 'semrush', 'ahrefs',
         'bot/', 'crawler', 'spider', 'python-requests', 'curl/', 'wget/',
     ];
 
@@ -41,6 +50,12 @@ class BotDetector
     public static function currentRequestIsBot(): bool
     {
         try {
+            // Console (artisan, queue workers) carries a synthetic request
+            // with no user agent — a worker is not a crawler.
+            if (app()->runningInConsole() && !app()->runningUnitTests()) {
+                return false;
+            }
+
             $request = request();
 
             return $request ? self::isBot($request->userAgent()) : false;

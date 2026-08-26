@@ -503,15 +503,28 @@ class DashboardControllerTest extends TestCase
         // blanks dropped, order kept
         $this->assertSame(['flow_viewed', 'lead_created'], $experiment->custom_events);
 
+        // What a real "remove all steps" form submission sends: only the
+        // hidden sentinel (an empty string), never a bare [].
         $this->put("/ab-testing/dashboard/{$experiment->id}", [
             'name' => 'funnel_steps_test',
             'variants' => ['control' => 50, 'variant_b' => 50],
             'traffic_allocation' => 100,
             'is_active' => true,
-            'funnel_steps' => [],
+            'funnel_steps' => [''],
         ]);
 
         $this->assertNull($experiment->fresh()->custom_events);
+
+        // A caller that omits the key entirely (non-form API usage) leaves
+        // the stored list untouched.
+        $experiment->update(['custom_events' => ['flow_viewed']]);
+        $this->put("/ab-testing/dashboard/{$experiment->id}", [
+            'name' => 'funnel_steps_test',
+            'variants' => ['control' => 50, 'variant_b' => 50],
+            'traffic_allocation' => 100,
+            'is_active' => true,
+        ]);
+        $this->assertSame(['flow_viewed'], $experiment->fresh()->custom_events);
     }
 
     /** @test */

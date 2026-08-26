@@ -33,7 +33,7 @@
                         Event reach funnel (users reaching each step, first touch)
                         — <a href="{{ route('ab-testing.dashboard.edit', $experiment) }}" class="text-blue-600 hover:underline" @click.stop>configure step order</a>
                     @else
-                        Step-level funnel · source: {{ $funnel['source'] }}
+                        Step-level funnel · source: {{ $funnel['source'] ?? 'external provider' }}
                     @endif
                 </p>
             </div>

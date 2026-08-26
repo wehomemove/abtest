@@ -63,6 +63,10 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     Funnel steps <span class="text-gray-400 font-normal">(optional — ordered event names for the dashboard funnel)</span>
                 </label>
+                {{-- Sentinel: with zero step rows the browser would omit the
+                     funnel_steps key entirely and the old list would survive a
+                     "remove all" save. Blanks are filtered server-side. --}}
+                <input type="hidden" name="funnel_steps[]" value="">
                 <div x-data="{ steps: @json(old('funnel_steps', [])) }" class="space-y-2">
                     <template x-for="(step, index) in steps" :key="index">
                         <div class="flex items-center space-x-2">
