@@ -169,6 +169,8 @@ Each arm's own confidence vs control is in the table below."></i>
     </div>
 </div>
 
+@include('ab-testing::dashboard.partials.funnel')
+
 <div class="bg-white shadow rounded mb-8">
     <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
         <h3 class="text-lg font-medium text-gray-900">Variant Performance</h3>

@@ -50,6 +50,31 @@
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Funnel steps <span class="text-gray-400 font-normal">(optional — ordered event names for the dashboard funnel)</span>
+                </label>
+                <div x-data="{ steps: @json(old('funnel_steps', $experiment->custom_events ?? [])) }" class="space-y-2">
+                    <template x-for="(step, index) in steps" :key="index">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs text-gray-400 w-5 text-right" x-text="index + 1 + '.'"></span>
+                            <input type="text" x-model="steps[index]" name="funnel_steps[]"
+                                   placeholder="e.g. flow_viewed"
+                                   class="flex-1 border border-gray-300 rounded-md px-3 py-2">
+                            <button type="button" @click="index > 0 && steps.splice(index - 1, 0, steps.splice(index, 1)[0])"
+                                    class="px-2 py-1 text-gray-400 hover:text-gray-700" title="Move up">↑</button>
+                            <button type="button" @click="index < steps.length - 1 && steps.splice(index + 1, 0, steps.splice(index, 1)[0])"
+                                    class="px-2 py-1 text-gray-400 hover:text-gray-700" title="Move down">↓</button>
+                            <button type="button" @click="steps.splice(index, 1)"
+                                    class="px-2 py-1 text-red-400 hover:text-red-600" title="Remove">✕</button>
+                        </div>
+                    </template>
+                    <button type="button" @click="steps.push('')"
+                            class="text-sm text-blue-600 hover:underline">+ Add step</button>
+                    <p class="text-xs text-gray-500">Order drives the funnel display. 'conversion' is always shown last; leave empty to order steps by first observation.</p>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
                     Traffic Allocation
                 </label>
                 <div class="flex items-center space-x-3">

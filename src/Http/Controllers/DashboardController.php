@@ -5,6 +5,8 @@ namespace Homemove\AbTesting\Http\Controllers;
 use Homemove\AbTesting\Facades\AbTest;
 use Homemove\AbTesting\Models\Event;
 use Homemove\AbTesting\Models\Experiment;
+use Homemove\AbTesting\Contracts\FunnelStepDataProvider;
+use Homemove\AbTesting\Services\ReachFunnelService;
 use Homemove\AbTesting\Support\Statistics;
 use Homemove\AbTesting\Models\UserAssignment;
 use Illuminate\Http\Request;
@@ -26,6 +28,7 @@ class DashboardController extends Controller
         $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
         $eventFilter = $this->resolveEventFilter($request->query('event_filter'), $experiment, $deviceType);
         $stats = $this->getExperimentStats($experiment, $deviceType, $eventFilter);
+        $stats['funnel'] = $this->resolveFunnel($experiment, $deviceType);
 
         return view('ab-testing::dashboard.show', [
             'experiment' => $experiment,
@@ -33,6 +36,43 @@ class DashboardController extends Controller
             'activeDeviceType' => $deviceType,
             'activeEventFilter' => $eventFilter,
         ]);
+    }
+
+    /**
+     * Step-level funnel from a host-bound provider when one exists and has
+     * data; otherwise the package-native reach funnel from ab_events.
+     */
+    protected function resolveFunnel(Experiment $experiment, ?string $deviceType): ?array
+    {
+        if (app()->bound(FunnelStepDataProvider::class)) {
+            $provided = app(FunnelStepDataProvider::class)->funnelFor($experiment->name, $deviceType);
+            if ($provided !== null && ($provided['steps'] ?? []) !== []) {
+                $variants = array_keys($experiment->variants ?? []);
+                $provided['biggest_drop_after'] ??= (new ReachFunnelService)->funnelBiggestDrop($provided['steps'], $variants);
+
+                return $provided;
+            }
+        }
+
+        return (new ReachFunnelService)->funnelFor($experiment, $deviceType);
+    }
+
+    /**
+     * The funnel step list lives in the (previously unused) custom_events
+     * column — ordered event names driving the reach funnel's step order.
+     */
+    protected function mapFunnelSteps(array $validated): array
+    {
+        if (array_key_exists('funnel_steps', $validated)) {
+            $steps = array_values(array_filter(
+                array_map(fn ($step) => trim((string) $step), $validated['funnel_steps'] ?? []),
+                fn ($step) => $step !== ''
+            ));
+            $validated['custom_events'] = $steps === [] ? null : $steps;
+            unset($validated['funnel_steps']);
+        }
+
+        return $validated;
     }
 
     protected function resolveEventFilter(?string $eventFilter, Experiment $experiment, ?string $deviceType = null): ?string
@@ -60,6 +100,8 @@ class DashboardController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|unique:ab_experiments,name',
             'description' => 'nullable|string',
+            'funnel_steps' => 'nullable|array',
+            'funnel_steps.*' => 'nullable|string|max:100',
             'variants' => 'required|array|min:2',
             'variants.*' => 'required|integer|min:0|max:100',
             'traffic_allocation' => 'required|integer|min:0|max:100',
@@ -77,6 +119,7 @@ class DashboardController extends Controller
         $validated['allowed_device_types'] = $this->normaliseAllowedDeviceTypes(
             $validated['allowed_device_types'] ?? null
         );
+        $validated = $this->mapFunnelSteps($validated);
 
         $experiment = Experiment::create($validated);
 
@@ -97,6 +140,8 @@ class DashboardController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|unique:ab_experiments,name,' . $experiment->id,
             'description' => 'nullable|string',
+            'funnel_steps' => 'nullable|array',
+            'funnel_steps.*' => 'nullable|string|max:100',
             'variants' => 'required|array|min:2',
             'variants.*' => 'required|integer|min:0|max:100',
             'traffic_allocation' => 'required|integer|min:0|max:100',
@@ -114,6 +159,7 @@ class DashboardController extends Controller
         $validated['allowed_device_types'] = $this->normaliseAllowedDeviceTypes(
             $validated['allowed_device_types'] ?? null
         );
+        $validated = $this->mapFunnelSteps($validated);
 
         $experiment->update($validated);
 

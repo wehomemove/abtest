@@ -2,6 +2,7 @@
 
 namespace Homemove\AbTesting\Tests\Feature;
 
+use Homemove\AbTesting\Models\Experiment;
 use Homemove\AbTesting\Tests\TestCase;
 use Illuminate\Support\Facades\DB;
 
@@ -435,6 +436,83 @@ class DashboardControllerTest extends TestCase
         $stats = $this->get("/ab-testing/dashboard/{$experimentId}")->viewData('stats');
 
         $this->assertNull($stats['rate_change_pp']);
+    }
+
+    /** @test */
+    public function dashboard_uses_a_bound_funnel_provider_and_falls_back_on_null()
+    {
+        $experimentId = DB::table('ab_experiments')->insertGetId([
+            'name' => 'provider_test',
+            'variants' => json_encode(['control' => 50, 'variant_b' => 50]),
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('ab_user_assignments')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::table('ab_events')->insert([
+            ['experiment_id' => $experimentId, 'user_id' => 'u1', 'variant' => 'control', 'event_name' => 'conversion', 'properties' => '{"count":1}', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        // Bound provider with data: its funnel wins.
+        $this->app->bind(\Homemove\AbTesting\Contracts\FunnelStepDataProvider::class, function () {
+            return new class implements \Homemove\AbTesting\Contracts\FunnelStepDataProvider {
+                public function funnelFor(string $experimentName, ?string $deviceType = null): ?array
+                {
+                    return [
+                        'source' => 'fake_step_source',
+                        'steps' => [
+                            ['key' => 'landing', 'label' => 'Landing', 'index' => 0, 'counts' => ['control' => 10, 'variant_b' => 9]],
+                            ['key' => 'question_1', 'label' => 'Question 1', 'index' => 1, 'counts' => ['control' => 4, 'variant_b' => 8]],
+                        ],
+                    ];
+                }
+            };
+        });
+
+        $stats = $this->get("/ab-testing/dashboard/{$experimentId}")->viewData('stats');
+        $this->assertSame('fake_step_source', $stats['funnel']['source']);
+        // biggest drop computed for provider data that arrives without one
+        $this->assertSame('landing', $stats['funnel']['biggest_drop_after']['control']);
+
+        // Provider returning null: package reach funnel takes over.
+        $this->app->bind(\Homemove\AbTesting\Contracts\FunnelStepDataProvider::class, function () {
+            return new class implements \Homemove\AbTesting\Contracts\FunnelStepDataProvider {
+                public function funnelFor(string $experimentName, ?string $deviceType = null): ?array
+                {
+                    return null;
+                }
+            };
+        });
+
+        $stats = $this->get("/ab-testing/dashboard/{$experimentId}")->viewData('stats');
+        $this->assertSame('ab_events', $stats['funnel']['source']);
+    }
+
+    /** @test */
+    public function funnel_steps_round_trip_through_custom_events()
+    {
+        $response = $this->post('/ab-testing/dashboard', [
+            'name' => 'funnel_steps_test',
+            'variants' => ['control' => 50, 'variant_b' => 50],
+            'traffic_allocation' => 100,
+            'funnel_steps' => ['flow_viewed', '  ', 'lead_created', ''],
+        ]);
+
+        $experiment = Experiment::where('name', 'funnel_steps_test')->firstOrFail();
+        // blanks dropped, order kept
+        $this->assertSame(['flow_viewed', 'lead_created'], $experiment->custom_events);
+
+        $this->put("/ab-testing/dashboard/{$experiment->id}", [
+            'name' => 'funnel_steps_test',
+            'variants' => ['control' => 50, 'variant_b' => 50],
+            'traffic_allocation' => 100,
+            'is_active' => true,
+            'funnel_steps' => [],
+        ]);
+
+        $this->assertNull($experiment->fresh()->custom_events);
     }
 
     /** @test */
