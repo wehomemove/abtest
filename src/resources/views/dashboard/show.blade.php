@@ -689,7 +689,9 @@ async function refreshFunnel() {
                     const countEl = bar.querySelector('span.font-semibold');
                     if (countEl) countEl.textContent = Number(count).toLocaleString();
                 }
-                if (i > 0) {
+                if (i > 0 && count > 0) {
+                    // count === 0 keeps the server-rendered "not fired by this
+                    // arm" label — a structural zero is not a 0% retention.
                     const prev = funnel.steps[i - 1].counts?.[variant] ?? 0;
                     const label = document.querySelector(`[data-funnel-retention="${variant}:${step.key}"]`);
                     if (label && prev > 0) {

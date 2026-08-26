@@ -124,7 +124,11 @@ class ReachFunnelService
 
     /**
      * Per variant, the step key AFTER which the largest share of that arm's
-     * users is lost (relative retention step-over-step). Null when nothing drops.
+     * users is lost. Retention is measured only across steps the arm actually
+     * REACHES (count > 0): arms legitimately never fire other arms' events
+     * (mixed event vocabularies), and a structural zero is not a drop. The one
+     * exception: an arm that reaches nothing after some step while the funnel
+     * continues has genuinely lost everyone — that final transition is flagged.
      *
      * @param  list<array{key: string, counts: array<string, int>}>  $steps
      * @param  list<string>  $variants
@@ -134,20 +138,39 @@ class ReachFunnelService
     {
         $result = [];
         foreach ($variants as $variant) {
+            // The arm's own chain: steps it reaches, plus the entry step.
+            $reached = array_values(array_filter(
+                $steps,
+                fn ($step, $i) => $i === 0 || ($step['counts'][$variant] ?? 0) > 0,
+                ARRAY_FILTER_USE_BOTH
+            ));
+
             $worstKey = null;
             $worstRetention = 1.0;
-            for ($i = 1, $n = count($steps); $i < $n; $i++) {
-                $prev = $steps[$i - 1]['counts'][$variant] ?? 0;
-                $curr = $steps[$i]['counts'][$variant] ?? 0;
+            for ($i = 1, $n = count($reached); $i < $n; $i++) {
+                $prev = $reached[$i - 1]['counts'][$variant] ?? 0;
+                $curr = $reached[$i]['counts'][$variant] ?? 0;
                 if ($prev <= 0) {
                     continue;
                 }
                 $retention = $curr / $prev;
                 if ($retention < $worstRetention) {
                     $worstRetention = $retention;
-                    $worstKey = $steps[$i - 1]['key'];
+                    $worstKey = $reached[$i - 1]['key'];
                 }
             }
+
+            // Total loss: the arm's last reached step isn't the funnel's last
+            // step and it never appears again — everyone vanished there.
+            $lastReached = end($reached);
+            $lastFunnelKey = end($steps)['key'] ?? null;
+            if ($lastReached !== false
+                && ($lastReached['counts'][$variant] ?? 0) > 0
+                && $lastReached['key'] !== $lastFunnelKey) {
+                // 100% loss after the final reached step beats any partial drop.
+                $worstKey = $lastReached['key'];
+            }
+
             $result[$variant] = $worstKey;
         }
 
