@@ -125,18 +125,69 @@ Endpoints polled by the dashboard (all under `/api/ab-testing/experiments/{id}`)
 - `GET /chart-data?period=24h|7d|30d` — per-variant time series:
   `{labels, variants: {name: {participants[], conversion_rate[], color}}}`.
 
-> **Security note:** the `/api/ab-testing/*` routes ship with no auth. Protect
-> them in your host app's middleware the same way you gate the dashboard web
-> routes (e.g. the password gate) — the stats endpoints expose experiment data.
+> **Security note:** since v1.6 the read-only stats endpoints
+> (`/results`, `/stats`, `/recent-activity`, `/chart-data`) run under the
+> dashboard's middleware group (`routes.dashboard_middleware`, overridable via
+> `routes.stats_middleware`), so gating the dashboard gates them too. The
+> tracking endpoints (`/track`, `/variant`, `/register-debug`) stay open —
+> they are called from every visitor's browser.
+
+## 🎯 Conversion metric (v1.6)
+
+Stats default to the `conversion` event. On the experiment page a
+**Conversion metric** dropdown recomputes every stat (cards, table,
+significance, chart, funnel terminal step) as if any other tracked event were
+the conversion — carried into the polled API as `?event=`. **Save as primary**
+persists the choice per experiment (`primary_metric` column; `conversion`
+stores as null). Live tracking is never affected.
+
+## 🏁 Accept Variant (v1.6)
+
+For a finished test, the experiment page offers **Accept** per arm (the
+best-confidence arm is badged recommended). Accepting is type-to-confirm and:
+
+- serves the winner to **100% of traffic, including users already assigned to
+  other arms** (a short-circuit in `variant()` — assignment history is never
+  rewritten, and the per-user variant cache is bypassed);
+- sets weights to 0/100, `status = completed`, keeps tracking active;
+- generates a **cleanup report** (queued scan of the host codebase for the
+  experiment name + variant literals, with suggested actions) shown on the
+  dashboard, fired as the `Homemove\AbTesting\Events\VariantAccepted` event,
+  and POSTed to `accept.webhook_url` when configured — everything a PR bot
+  needs to open the cleanup PR (`accept.repo` names the target repo).
+
+**Reopen** (type-to-confirm) restores the pre-acceptance weights; users who
+first arrived during the accepted window are freshly bucketed. The QA debug
+override cookie still beats an accepted variant.
 
 ## 🔧 Configuration
 
-Add to your `.env`:
+Publish the config (`php artisan vendor:publish --tag=config`). Key options:
 
-```env
-AB_TESTING_ENABLED=true
-AB_TESTING_DEBUG=true
+```php
+'routes' => [
+    'enabled' => true,                    // false: register no package routes
+    'dashboard_middleware' => ['web'],    // e.g. ['web','auth','super_admin']
+    'api_middleware' => ['api'],          // open tracking endpoints
+    'stats_middleware' => null,           // null = inherit dashboard_middleware
+],
+'debug_middleware' => env('AB_TESTING_DEBUG_MIDDLEWARE', false), // opt-in panel (also needs app.debug)
+'cookie' => ['secure' => null, 'same_site' => 'Lax'],            // null secure = mirror the request
+'accept' => [
+    'webhook_url' => env('AB_TESTING_ACCEPT_WEBHOOK_URL'),       // cleanup-report intake (e.g. Slack bot)
+    'repo' => env('AB_TESTING_REPO'),                            // repo hint for the PR bot
+    'scan' => [...],                                             // paths/extensions/caps for the code scan
+],
 ```
+
+`cache.*` and `session_key` are honoured since v1.6. `database.*_table` and
+`tracking.queue` are reserved and not yet implemented; `target_applications`
+is host-specific legacy.
+
+> **Upgrading from ≤1.5:** the debug panel no longer auto-injects on
+> `app.debug` — set `AB_TESTING_DEBUG_MIDDLEWARE=true` to keep it. The stats
+> API endpoints move out of the `api` middleware group into the dashboard's
+> group (same URLs and route names).
 
 ## 📖 Advanced Usage
 

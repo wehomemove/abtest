@@ -24,8 +24,11 @@ class AbTestingServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'ab-testing');
-        $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
-        $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
+
+        if (config('ab-testing.routes.enabled', true)) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
+            $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
+        }
 
         $this->publishes([
             __DIR__.'/../config/ab-testing.php' => config_path('ab-testing.php'),
@@ -73,8 +76,8 @@ class AbTestingServiceProvider extends ServiceProvider
     {
         $this->app['router']->aliasMiddleware('ab-test', AbTestMiddleware::class);
 
-        // Register debug middleware globally for web routes when debug is enabled
-        if (config('app.debug')) {
+        // Opt-in debug panel: requires both the config flag and app.debug.
+        if (config('ab-testing.debug_middleware') && config('app.debug')) {
             $this->app['router']->pushMiddlewareToGroup('web', \Homemove\AbTesting\Middleware\DebugMiddleware::class);
         }
     }

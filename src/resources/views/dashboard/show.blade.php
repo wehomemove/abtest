@@ -15,6 +15,12 @@
                     <div class="w-2 h-2 rounded-full mr-2 {{ $experiment->is_active ? 'bg-green-300' : 'bg-red-300' }}"></div>
                     {{ $experiment->is_active ? 'Active' : 'Paused' }}
                 </span>
+                @if ($experiment->isAccepted())
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-emerald-500 text-white">
+                        <i class="fas fa-trophy mr-2"></i>
+                        Accepted: {{ $experiment->accepted_variant }} · {{ $experiment->accepted_at?->format('j M Y') }}
+                    </span>
+                @endif
                 <span class="text-gray-100">
                     <i class="fas fa-users mr-1"></i>
                     {{ number_format($stats['total_assignments']) }} participants
@@ -31,9 +37,43 @@
                         Stats filtered to {{ ucfirst($activeDeviceType) }}
                     </span>
                 @endif
+                @if ($activeConversionEvent !== 'conversion')
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-400 text-gray-900">
+                        <i class="fas fa-bullseye mr-1"></i>
+                        Conversion = {{ str_replace(['_', '-'], ' ', $activeConversionEvent) }}{{ $activeConversionEvent === $experiment->conversionEvent() ? ' (primary)' : ' (viewing)' }}
+                    </span>
+                @endif
             </div>
         </div>
         <div class="flex items-center space-x-3">
+            @php
+                $conversionEventOptions = array_keys($stats['event_counts_by_name'] ?? []);
+                sort($conversionEventOptions);
+                $conversionEventOptions = array_values(array_filter($conversionEventOptions, fn ($n) => $n !== 'conversion'));
+                array_unshift($conversionEventOptions, 'conversion');
+            @endphp
+            <label class="sr-only" for="conversion-event">Conversion metric</label>
+            <select id="conversion-event"
+                    title="Which tracked event counts as the conversion — recomputes every stat on this page"
+                    class="px-3 py-3 rounded text-sm text-gray-800 border border-transparent focus:ring-2 focus:ring-yellow-400"
+                    onchange="handleConversionEventChange(this.value)">
+                @foreach($conversionEventOptions as $eventName)
+                    <option value="{{ $eventName }}" {{ $activeConversionEvent === $eventName ? 'selected' : '' }}>
+                        Conversion: {{ str_replace(['_', '-'], ' ', $eventName) }}{{ $experiment->conversionEvent() === $eventName && $eventName !== 'conversion' ? ' (primary)' : '' }}
+                    </option>
+                @endforeach
+            </select>
+            @if ($activeConversionEvent !== $experiment->conversionEvent())
+                <form action="{{ route('ab-testing.dashboard.primary-metric', $experiment) }}" method="POST" class="inline">
+                    @csrf
+                    <input type="hidden" name="primary_metric" value="{{ $activeConversionEvent }}">
+                    <button type="submit"
+                            title="Make this the experiment's default conversion metric"
+                            class="px-4 py-3 bg-yellow-400 text-gray-900 rounded text-sm font-medium hover:bg-yellow-300 transition-all duration-200">
+                        Save as primary
+                    </button>
+                </form>
+            @endif
             <label class="sr-only" for="device-filter">Device</label>
             <select id="device-filter"
                     class="px-3 py-3 rounded text-sm text-gray-800 border border-transparent focus:ring-2 focus:ring-yellow-400"
@@ -43,13 +83,15 @@
                 <option value="tablet" {{ $activeDeviceType === 'tablet' ? 'selected' : '' }}>Tablet</option>
                 <option value="desktop" {{ $activeDeviceType === 'desktop' ? 'selected' : '' }}>Desktop</option>
             </select>
-            <form action="{{ route('ab-testing.dashboard.toggle', $experiment) }}" method="POST" class="inline">
-                @csrf
-                @method('PATCH')
-                <button type="submit" class="px-6 py-3 rounded font-medium transition-all duration-200 transform hover:scale-105 {{ $experiment->is_active ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-green-600 hover:bg-green-700 text-white' }}">
-                    {{ $experiment->is_active ? 'Pause' : 'Activate' }}
-                </button>
-            </form>
+            @if (!$experiment->isAccepted())
+                <form action="{{ route('ab-testing.dashboard.toggle', $experiment) }}" method="POST" class="inline">
+                    @csrf
+                    @method('PATCH')
+                    <button type="submit" class="px-6 py-3 rounded font-medium transition-all duration-200 transform hover:scale-105 {{ $experiment->is_active ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-green-600 hover:bg-green-700 text-white' }}">
+                        {{ $experiment->is_active ? 'Pause' : 'Activate' }}
+                    </button>
+                </form>
+            @endif
             <a href="{{ route('ab-testing.dashboard.edit', $experiment) }}"
                class="px-6 py-3 bg-white text-red-600 rounded hover:bg-red-50 font-medium transition-all duration-200 transform hover:scale-105">
                 Edit
@@ -175,7 +217,7 @@ Each arm's own confidence vs control is in the table below."></i>
         @php
             $variantTableEventFilters = array_values(array_filter(
                 array_keys($stats['event_counts_by_name'] ?? []),
-                fn ($name) => $name !== 'conversion',
+                fn ($name) => $name !== $activeConversionEvent,
             ));
             sort($variantTableEventFilters);
         @endphp
@@ -258,6 +300,202 @@ Each arm's own confidence vs control is in the table below."></i>
     </div>
 </div>
 
+@if (!$experiment->isAccepted())
+<!-- Accept Variant -->
+<div class="bg-white shadow rounded mb-8">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-medium text-gray-900">Accept a winning variant</h3>
+        <p class="text-sm text-gray-500 mt-1">
+            Rolls the chosen variant out to <strong>100% of traffic — including users already assigned to other variants</strong>.
+            Tracking continues under the winner. Reversible via Reopen, but be sure before you accept.
+        </p>
+    </div>
+    <div class="p-6 flex flex-wrap gap-3">
+        @foreach(array_keys($experiment->variants ?? []) as $variantName)
+            <button type="button"
+                    onclick="openAcceptModal(@js($variantName))"
+                    class="px-4 py-2 rounded border text-sm font-medium transition-colors
+                        {{ ($stats['statistical_significance']['variant'] ?? null) === $variantName
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : 'border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+                Accept {{ $variantName }}
+                @if(($stats['statistical_significance']['variant'] ?? null) === $variantName)
+                    <span class="ml-1 px-1.5 py-0.5 text-xs bg-emerald-500 text-white rounded">recommended</span>
+                @endif
+            </button>
+        @endforeach
+    </div>
+</div>
+
+<!-- Accept confirm modal -->
+<div id="accept-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+    <div class="bg-white rounded shadow-2xl max-w-lg w-full mx-4 p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-2">Accept <span id="accept-modal-variant" class="text-emerald-600"></span>?</h3>
+        <div class="text-sm text-gray-600 space-y-2 mb-4">
+            <p><strong>100% of traffic</strong> will receive this variant, including users currently assigned to other variants.</p>
+            <p>The experiment is marked completed and a cleanup report of leftover experiment code is generated.</p>
+            <p>You can reverse this with Reopen — but existing users may be re-bucketed on reopen, so be sure of your choice.</p>
+        </div>
+        <form action="{{ route('ab-testing.dashboard.accept', $experiment) }}" method="POST">
+            @csrf
+            <input type="hidden" name="variant" id="accept-modal-variant-input" value="">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Type the variant name to confirm</label>
+            <input type="text" name="confirm_name" id="accept-modal-confirm" autocomplete="off"
+                   class="w-full px-3 py-2 border border-gray-300 rounded mb-4 focus:ring-2 focus:ring-emerald-400"
+                   oninput="acceptModalValidate()">
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="closeAcceptModal()" class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button type="submit" id="accept-modal-submit" disabled
+                        class="px-4 py-2 rounded bg-emerald-600 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-700">
+                    Accept variant
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openAcceptModal(variant) {
+    document.getElementById('accept-modal-variant').textContent = variant;
+    document.getElementById('accept-modal-variant-input').value = variant;
+    document.getElementById('accept-modal-confirm').value = '';
+    acceptModalValidate();
+    const modal = document.getElementById('accept-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.getElementById('accept-modal-confirm').focus();
+}
+function closeAcceptModal() {
+    const modal = document.getElementById('accept-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+function acceptModalValidate() {
+    const expected = document.getElementById('accept-modal-variant-input').value;
+    const typed = document.getElementById('accept-modal-confirm').value;
+    document.getElementById('accept-modal-submit').disabled = typed !== expected;
+}
+</script>
+@else
+<!-- Accepted: cleanup report + reopen -->
+<div class="bg-white shadow rounded mb-8">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+        <div>
+            <h3 class="text-lg font-medium text-gray-900">
+                <i class="fas fa-trophy text-emerald-500 mr-1"></i>
+                Cleanup report — {{ $experiment->accepted_variant }} accepted
+            </h3>
+            <p class="text-sm text-gray-500 mt-1">Leftover experiment code found in this app; the report is also delivered to the configured PR bot.</p>
+        </div>
+        <button type="button" onclick="openReopenModal()"
+                class="px-4 py-2 rounded border border-red-300 text-red-600 text-sm font-medium hover:bg-red-50">
+            Reopen experiment
+        </button>
+    </div>
+    <div class="p-6">
+        @if (!$latestAcceptanceReport || $latestAcceptanceReport->status === 'pending')
+            <div class="flex items-center gap-3 text-gray-500 text-sm">
+                <i class="fas fa-circle-notch fa-spin"></i>
+                Generating cleanup report…
+            </div>
+            <script>setTimeout(() => window.location.reload(), 10000);</script>
+        @elseif ($latestAcceptanceReport->status === 'failed')
+            <div class="rounded bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+                The cleanup scan failed — check the application log. The acceptance itself is live.
+            </div>
+        @else
+            @php $reportPayload = $latestAcceptanceReport->payload ?? []; @endphp
+            <div class="flex items-center justify-between mb-4">
+                <p class="text-sm text-gray-600">
+                    {{ count($reportPayload['references'] ?? []) }} reference(s) across
+                    {{ number_format($reportPayload['scan']['scanned_files'] ?? 0) }} scanned files
+                    @if(($reportPayload['scan']['truncated'] ?? false)) <span class="text-yellow-600">(truncated)</span> @endif
+                </p>
+                <button type="button" onclick="copyAcceptReport()" class="px-3 py-1.5 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+                    <i class="fas fa-copy mr-1"></i>Copy JSON
+                </button>
+            </div>
+            @if (($reportPayload['references'] ?? []) === [])
+                <p class="text-sm text-gray-500">No leftover references found.</p>
+            @else
+                <div class="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-xs font-medium text-gray-500 sticky top-0 bg-white">
+                                <th class="pb-2 pr-4">File</th>
+                                <th class="pb-2 pr-4">Line</th>
+                                <th class="pb-2 pr-4">Snippet</th>
+                                <th class="pb-2">Suggested action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($reportPayload['references'] as $ref)
+                                <tr class="border-t align-top">
+                                    <td class="py-2 pr-4 font-mono text-xs">{{ $ref['file'] }}</td>
+                                    <td class="py-2 pr-4">{{ $ref['line'] }}</td>
+                                    <td class="py-2 pr-4 font-mono text-xs text-gray-600 break-all">{{ $ref['snippet'] }}</td>
+                                    <td class="py-2">
+                                        <span class="px-2 py-0.5 rounded text-xs font-medium
+                                            {{ $ref['suggested_action'] === 'delete_losing_branch' ? 'bg-red-100 text-red-700'
+                                                : ($ref['suggested_action'] === 'inline_winner' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600') }}">
+                                            {{ str_replace('_', ' ', $ref['suggested_action']) }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+            <script>
+            window.acceptReportPayload = @json($reportPayload);
+            function copyAcceptReport() {
+                navigator.clipboard.writeText(JSON.stringify(window.acceptReportPayload, null, 2));
+            }
+            </script>
+        @endif
+    </div>
+</div>
+
+<!-- Reopen confirm modal -->
+<div id="reopen-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+    <div class="bg-white rounded shadow-2xl max-w-lg w-full mx-4 p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-2">Reopen {{ $experiment->name }}?</h3>
+        <div class="text-sm text-gray-600 space-y-2 mb-4">
+            <p>Pre-acceptance weights are restored and the experiment resumes splitting traffic.</p>
+            <p>Users who first arrived while the winner was rolled out have no stored assignment and will be freshly bucketed.</p>
+        </div>
+        <form action="{{ route('ab-testing.dashboard.reopen', $experiment) }}" method="POST">
+            @csrf
+            <label class="block text-sm font-medium text-gray-700 mb-1">Type the experiment name to confirm</label>
+            <input type="text" name="confirm_name" autocomplete="off"
+                   class="w-full px-3 py-2 border border-gray-300 rounded mb-4 focus:ring-2 focus:ring-red-400"
+                   oninput="this.form.querySelector('button[type=submit]').disabled = this.value !== @js($experiment->name)">
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="closeReopenModal()" class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button type="submit" disabled
+                        class="px-4 py-2 rounded bg-red-600 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-700">
+                    Reopen
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openReopenModal() {
+    const modal = document.getElementById('reopen-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+function closeReopenModal() {
+    const modal = document.getElementById('reopen-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+</script>
+@endif
+
 <!-- Charts Section -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
 
@@ -272,11 +510,11 @@ Each arm's own confidence vs control is in the table below."></i>
             @php
                 $variantChartEventNames = array_keys($stats['event_counts_by_name'] ?? []);
                 sort($variantChartEventNames);
-                if (in_array('conversion', $variantChartEventNames, true)) {
-                    $variantChartEventNames = array_values(array_filter($variantChartEventNames, fn ($n) => $n !== 'conversion'));
-                    array_unshift($variantChartEventNames, 'conversion');
+                if (in_array($activeConversionEvent, $variantChartEventNames, true)) {
+                    $variantChartEventNames = array_values(array_filter($variantChartEventNames, fn ($n) => $n !== $activeConversionEvent));
+                    array_unshift($variantChartEventNames, $activeConversionEvent);
                 }
-                $initialChartEvent = $variantChartEventNames[0] ?? 'conversion';
+                $initialChartEvent = $variantChartEventNames[0] ?? $activeConversionEvent;
             @endphp
             <select id="variant-chart-event"
                     class="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
@@ -460,12 +698,23 @@ let experimentData = {
     id: {{ $experiment->id }}
 };
 window.activeDeviceType = @json($activeDeviceType);
+window.activeConversionEvent = @json($activeConversionEvent);
 
 function buildApiUrl(path, params = {}) {
     const url = new URL(`/api/ab-testing/experiments/${experimentData.id}${path}`, window.location.origin);
     if (window.activeDeviceType) url.searchParams.set('device_type', window.activeDeviceType);
+    // Keep every poll on the same conversion lens as the rendered page.
+    if (window.activeConversionEvent) url.searchParams.set('event', window.activeConversionEvent);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
     return url.pathname + url.search;
+}
+
+function handleConversionEventChange(value) {
+    // Always explicit: a bare URL resolves to the persisted primary metric,
+    // so "conversion" must be sent as ?event=conversion to override it.
+    const url = new URL(window.location.href);
+    url.searchParams.set('event', value);
+    window.location.href = url.toString();
 }
 
 function handleDeviceFilterChange(value) {

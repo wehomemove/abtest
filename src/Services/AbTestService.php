@@ -13,7 +13,16 @@ class AbTestService
 
     protected $cacheTtl = 3600; // 1 hour
 
+    protected $sessionKey = 'ab_user_id';
+
     protected $debugExperiments = [];
+
+    public function __construct()
+    {
+        $this->cachePrefix = config('ab-testing.cache.prefix', $this->cachePrefix);
+        $this->cacheTtl = config('ab-testing.cache.ttl', $this->cacheTtl);
+        $this->sessionKey = config('ab-testing.session_key', $this->sessionKey);
+    }
 
     /**
      * Get variant for a user in an experiment
@@ -54,6 +63,16 @@ class AbTestService
         }
 
         $experimentRow = $this->getExperiment($experimentName);
+
+        // Accepted experiment: EVERY user gets the winner — before the
+        // assignment lookup (already-bucketed users included) and before the
+        // per-user cache (which clearCache() admits it can't purge). The
+        // debug override above still wins so QA can force a losing arm.
+        if ($experimentRow && !empty($experimentRow->accepted_variant)) {
+            $this->trackDebugExperiment($experimentName, $experimentRow->accepted_variant);
+
+            return $experimentRow->accepted_variant;
+        }
 
         // Existing assignment wins over device gating — required so conversions tracked
         // from server contexts (e.g. Stripe webhooks) return the user's real variant.
@@ -319,6 +338,11 @@ class AbTestService
      */
     protected function shouldUseAdaptiveAllocation($experiment): bool
     {
+        // Never fight an accepted 0/100 rollout back towards old targets.
+        if (!empty($experiment->accepted_variant)) {
+            return false;
+        }
+
         // Only use adaptive allocation after we have at least 20 assignments
         // This prevents early skewing from affecting the algorithm
         $totalAssignments = DB::table('ab_user_assignments')
@@ -422,13 +446,13 @@ class AbTestService
     protected function getSessionUserId(): string
     {
         // First try to get from cookie (most reliable)
-        if (isset($_COOKIE['ab_user_id'])) {
-            return $_COOKIE['ab_user_id'];
+        if (isset($_COOKIE[$this->sessionKey])) {
+            return $_COOKIE[$this->sessionKey];
         }
 
         // Try session as fallback
-        if (session()->isStarted() && session()->has('ab_user_id')) {
-            $userId = session('ab_user_id');
+        if (session()->isStarted() && session()->has($this->sessionKey)) {
+            $userId = session($this->sessionKey);
             // Also store in cookie for reliability
             $this->setUserIdCookie($userId);
 
@@ -445,7 +469,7 @@ class AbTestService
             if (!session()->isStarted()) {
                 session()->start();
             }
-            session(['ab_user_id' => $userId]);
+            session([$this->sessionKey => $userId]);
             session()->save();
         } catch (\Exception $e) {
             // Session might not be available, cookie will handle it
@@ -461,8 +485,19 @@ class AbTestService
     protected function setUserIdCookie(string $userId): void
     {
         // Set cookie for 30 days
-        $expire = time() + (30 * 24 * 60 * 60);
-        setcookie('ab_user_id', $userId, $expire, '/', '', false, true);
+        setcookie($this->sessionKey, $userId, $this->cookieOptions(time() + (30 * 24 * 60 * 60)));
+    }
+
+    /** Options for setcookie(); secure mirrors the request unless configured. */
+    public function cookieOptions(int $expires): array
+    {
+        return [
+            'expires' => $expires,
+            'path' => '/',
+            'secure' => config('ab-testing.cookie.secure') ?? request()->isSecure(),
+            'httponly' => true,
+            'samesite' => config('ab-testing.cookie.same_site', 'Lax'),
+        ];
     }
 
     /**
@@ -552,21 +587,21 @@ class AbTestService
         $source = 'none';
 
         // Check cookie first
-        if (isset($_COOKIE['ab_user_id'])) {
-            $userId = $_COOKIE['ab_user_id'];
+        if (isset($_COOKIE[$this->sessionKey])) {
+            $userId = $_COOKIE[$this->sessionKey];
             $source = 'cookie';
         }
         // Check session as fallback
-        elseif (session()->isStarted() && session()->has('ab_user_id')) {
-            $userId = session('ab_user_id');
+        elseif (session()->isStarted() && session()->has($this->sessionKey)) {
+            $userId = session($this->sessionKey);
             $source = 'session';
         }
 
         return [
             'user_id' => $userId ?? 'not_set',
             'source' => $source,
-            'cookie_exists' => isset($_COOKIE['ab_user_id']),
-            'session_exists' => session()->isStarted() && session()->has('ab_user_id'),
+            'cookie_exists' => isset($_COOKIE[$this->sessionKey]),
+            'session_exists' => session()->isStarted() && session()->has($this->sessionKey),
             'session_started' => session()->isStarted()
         ];
     }

@@ -20,8 +20,9 @@ class ReachFunnelService
     /**
      * @return array{source: string, steps: list<array{key: string, label: string, index: int, counts: array<string, int>}>, biggest_drop_after: array<string, string|null>}|null
      */
-    public function funnelFor(Experiment $experiment, ?string $deviceType = null): ?array
+    public function funnelFor(Experiment $experiment, ?string $deviceType = null, ?string $conversionEvent = null): ?array
     {
+        $conversionEvent ??= $experiment->conversionEvent();
         $variants = array_keys($experiment->variants ?? []);
         if ($variants === []) {
             return null;
@@ -46,7 +47,7 @@ class ReachFunnelService
                 $reach[$row->event_name][$row->variant] = (int) $row->users;
             });
 
-        $eventOrder = $this->stepOrder($experiment, array_keys($reach));
+        $eventOrder = $this->stepOrder($experiment, array_keys($reach), $conversionEvent);
 
         $steps = [[
             'key' => '_assigned',
@@ -77,12 +78,12 @@ class ReachFunnelService
     /**
      * Ordered step list: the experiment's configured custom_events (kept only
      * where events actually exist), else observed events by first first-touch,
-     * with 'conversion' pinned last either way.
+     * with the conversion event pinned last either way.
      *
      * @param  list<string>  $observed
      * @return list<string>
      */
-    protected function stepOrder(Experiment $experiment, array $observed): array
+    protected function stepOrder(Experiment $experiment, array $observed, string $conversionEvent = 'conversion'): array
     {
         $configured = array_values(array_filter(
             (array) ($experiment->custom_events ?? []),
@@ -101,9 +102,9 @@ class ReachFunnelService
             $order = array_values(array_intersect($firstTouch, $observed));
         }
 
-        $order = array_values(array_filter($order, fn ($e) => $e !== 'conversion'));
-        if (in_array('conversion', $observed, true)) {
-            $order[] = 'conversion';
+        $order = array_values(array_filter($order, fn ($e) => $e !== $conversionEvent));
+        if (in_array($conversionEvent, $observed, true)) {
+            $order[] = $conversionEvent;
         }
 
         return $order;

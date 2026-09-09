@@ -83,8 +83,6 @@ class DebugMiddlewareTest extends TestCase
             return $response;
         };
 
-        Log::shouldReceive('info')->once();
-
         $result = $this->middleware->handle($request, $next);
 
         $this->assertEquals('<html><body>No experiments</body></html>', $result->getContent());
@@ -114,8 +112,6 @@ class DebugMiddlewareTest extends TestCase
         $next = function ($req) use ($response) {
             return $response;
         };
-
-        Log::shouldReceive('info')->once();
 
         $result = $this->middleware->handle($request, $next);
 
@@ -159,8 +155,6 @@ class DebugMiddlewareTest extends TestCase
             return $response;
         };
 
-        Log::shouldReceive('info')->twice(); // Once for middleware, once for successful injection
-
         $result = $this->middleware->handle($request, $next);
 
         $content = $result->getContent();
@@ -203,8 +197,6 @@ class DebugMiddlewareTest extends TestCase
         $next = function ($req) use ($response) {
             return $response;
         };
-
-        Log::shouldReceive('info')->once();
         Log::shouldReceive('error')->once()->with('AB Debug: Failed to render debug view', Mockery::type('array'));
 
         $result = $this->middleware->handle($request, $next);
@@ -248,8 +240,6 @@ class DebugMiddlewareTest extends TestCase
         $next = function ($req) use ($response) {
             return $response;
         };
-
-        Log::shouldReceive('info')->twice();
 
         $result = $this->middleware->handle($request, $next);
 
