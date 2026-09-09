@@ -38,9 +38,6 @@ class DashboardController extends Controller
             'activeDeviceType' => $deviceType,
             'activeEventFilter' => $eventFilter,
             'activeConversionEvent' => $conversionEvent,
-            'latestAcceptanceReport' => $experiment->isAccepted()
-                ? \Homemove\AbTesting\Models\AcceptanceReport::where('experiment_id', $experiment->id)->latest('id')->first()
-                : null,
         ]);
     }
 
@@ -200,98 +197,6 @@ class DashboardController extends Controller
             ->with('success', $metric === null
                 ? 'Primary metric reset to conversion.'
                 : "Primary metric saved: {$metric}");
-    }
-
-    /**
-     * Roll the winning variant out to 100% of traffic — existing assignments
-     * included (variant() short-circuits to the accepted arm). Reversible via
-     * reopen(); assignment history is never rewritten.
-     */
-    public function accept(Request $request, Experiment $experiment)
-    {
-        $validated = $request->validate([
-            'variant' => 'required|string',
-            'confirm_name' => 'required|string',
-        ]);
-
-        if ($experiment->isAccepted()) {
-            return back()->withErrors(['variant' => 'A variant has already been accepted for this experiment.']);
-        }
-
-        if (!array_key_exists($validated['variant'], $experiment->variants ?? [])) {
-            return back()->withErrors(['variant' => 'Unknown variant for this experiment.']);
-        }
-
-        if (!hash_equals($validated['variant'], $validated['confirm_name'])) {
-            return back()->withErrors(['confirm_name' => 'Type the variant name exactly to confirm.']);
-        }
-
-        $report = \Illuminate\Support\Facades\DB::transaction(function () use ($experiment, $validated) {
-            $variantNames = array_keys($experiment->variants);
-            $rolledOut = array_combine(
-                $variantNames,
-                array_map(fn ($name) => $name === $validated['variant'] ? 100 : 0, $variantNames)
-            );
-
-            $experiment->update([
-                'pre_acceptance' => [
-                    'variants' => $experiment->variants,
-                    'status' => $experiment->status,
-                    'is_active' => $experiment->is_active,
-                ],
-                'variants' => $rolledOut,
-                'accepted_variant' => $validated['variant'],
-                'accepted_at' => now(),
-                'status' => 'completed',
-                // Stays active so tracking keeps recording under the winner.
-                'is_active' => true,
-            ]);
-
-            return \Homemove\AbTesting\Models\AcceptanceReport::create([
-                'experiment_id' => $experiment->id,
-                'accepted_variant' => $validated['variant'],
-                'status' => 'pending',
-            ]);
-        });
-
-        AbTest::clearCache($experiment->name);
-
-        \Homemove\AbTesting\Jobs\GenerateCleanupReport::dispatch($report->id);
-
-        return redirect()->route('ab-testing.dashboard.show', $experiment)
-            ->with('success', "Variant '{$validated['variant']}' accepted — all traffic now receives it. Cleanup report generating.");
-    }
-
-    /** Undo accept(): restore the pre-acceptance weights and lifecycle. */
-    public function reopen(Request $request, Experiment $experiment)
-    {
-        $validated = $request->validate([
-            'confirm_name' => 'required|string',
-        ]);
-
-        if (!$experiment->isAccepted()) {
-            return back()->withErrors(['confirm_name' => 'This experiment has no accepted variant.']);
-        }
-
-        if (!hash_equals($experiment->name, $validated['confirm_name'])) {
-            return back()->withErrors(['confirm_name' => 'Type the experiment name exactly to confirm.']);
-        }
-
-        $snapshot = $experiment->pre_acceptance ?? [];
-
-        $experiment->update([
-            'variants' => $snapshot['variants'] ?? $experiment->variants,
-            'status' => $snapshot['status'] ?? 'running',
-            'is_active' => $snapshot['is_active'] ?? true,
-            'accepted_variant' => null,
-            'accepted_at' => null,
-            'pre_acceptance' => null,
-        ]);
-
-        AbTest::clearCache($experiment->name);
-
-        return redirect()->route('ab-testing.dashboard.show', $experiment)
-            ->with('success', 'Experiment reopened — pre-acceptance weights restored.');
     }
 
     public function toggleStatus(Experiment $experiment)

@@ -20,8 +20,6 @@ Route::prefix('ab-testing')
                 Route::delete('/{experiment}', [DashboardController::class, 'destroy'])->name('destroy');
                 Route::patch('/{experiment}/toggle', [DashboardController::class, 'toggleStatus'])->name('toggle');
                 Route::post('/{experiment}/primary-metric', [DashboardController::class, 'setPrimaryMetric'])->name('primary-metric');
-                Route::post('/{experiment}/accept', [DashboardController::class, 'accept'])->name('accept');
-                Route::post('/{experiment}/reopen', [DashboardController::class, 'reopen'])->name('reopen');
             });
 
         // Test page

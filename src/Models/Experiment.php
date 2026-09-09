@@ -27,9 +27,6 @@ class Experiment extends Model
         'targeting_rules',
         'allowed_device_types',
         'status',
-        'accepted_variant',
-        'accepted_at',
-        'pre_acceptance',
     ];
 
     protected $casts = [
@@ -43,19 +40,12 @@ class Experiment extends Model
         'start_date' => 'datetime',
         'end_date' => 'datetime',
         'confidence_level' => 'decimal:2',
-        'accepted_at' => 'datetime',
-        'pre_acceptance' => 'array',
     ];
 
     /** The event the dashboard treats as the conversion for this experiment. */
     public function conversionEvent(): string
     {
         return $this->primary_metric ?: 'conversion';
-    }
-
-    public function isAccepted(): bool
-    {
-        return !empty($this->accepted_variant);
     }
 
     public function assignments(): HasMany

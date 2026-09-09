@@ -38,24 +38,6 @@ return [
         'same_site' => 'Lax',
     ],
 
-    // Accept-variant: cleanup-report scan + delivery to a PR bot.
-    'accept' => [
-        // POSTed the full report payload when set (e.g. a Slack bot intake).
-        'webhook_url' => env('AB_TESTING_ACCEPT_WEBHOOK_URL'),
-        // Repo hint carried in the payload so the bot knows where to open a PR.
-        'repo' => env('AB_TESTING_REPO'),
-        'scan' => [
-            'enabled' => true,
-            'paths' => ['app', 'resources', 'config', 'routes', 'database'],
-            'extensions' => ['php', 'js', 'ts', 'tsx', 'vue', 'json'],
-            'timeout_seconds' => 60,
-            'max_references' => 500,
-            'max_file_size' => 1048576,
-        ],
-        // Queue name for the report job; null = default queue.
-        'queue' => null,
-    ],
-
     // Reserved: table names are not yet configurable (models hardcode them).
     'database' => [
         'experiments_table' => 'ab_experiments',

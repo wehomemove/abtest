@@ -64,16 +64,6 @@ class AbTestService
 
         $experimentRow = $this->getExperiment($experimentName);
 
-        // Accepted experiment: EVERY user gets the winner — before the
-        // assignment lookup (already-bucketed users included) and before the
-        // per-user cache (which clearCache() admits it can't purge). The
-        // debug override above still wins so QA can force a losing arm.
-        if ($experimentRow && !empty($experimentRow->accepted_variant)) {
-            $this->trackDebugExperiment($experimentName, $experimentRow->accepted_variant);
-
-            return $experimentRow->accepted_variant;
-        }
-
         // Existing assignment wins over device gating — required so conversions tracked
         // from server contexts (e.g. Stripe webhooks) return the user's real variant.
         if ($experimentRow) {
@@ -338,11 +328,6 @@ class AbTestService
      */
     protected function shouldUseAdaptiveAllocation($experiment): bool
     {
-        // Never fight an accepted 0/100 rollout back towards old targets.
-        if (!empty($experiment->accepted_variant)) {
-            return false;
-        }
-
         // Only use adaptive allocation after we have at least 20 assignments
         // This prevents early skewing from affecting the algorithm
         $totalAssignments = DB::table('ab_user_assignments')

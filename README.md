@@ -141,25 +141,6 @@ the conversion — carried into the polled API as `?event=`. **Save as primary**
 persists the choice per experiment (`primary_metric` column; `conversion`
 stores as null). Live tracking is never affected.
 
-## 🏁 Accept Variant (v1.6)
-
-For a finished test, the experiment page offers **Accept** per arm (the
-best-confidence arm is badged recommended). Accepting is type-to-confirm and:
-
-- serves the winner to **100% of traffic, including users already assigned to
-  other arms** (a short-circuit in `variant()` — assignment history is never
-  rewritten, and the per-user variant cache is bypassed);
-- sets weights to 0/100, `status = completed`, keeps tracking active;
-- generates a **cleanup report** (queued scan of the host codebase for the
-  experiment name + variant literals, with suggested actions) shown on the
-  dashboard, fired as the `Homemove\AbTesting\Events\VariantAccepted` event,
-  and POSTed to `accept.webhook_url` when configured — everything a PR bot
-  needs to open the cleanup PR (`accept.repo` names the target repo).
-
-**Reopen** (type-to-confirm) restores the pre-acceptance weights; users who
-first arrived during the accepted window are freshly bucketed. The QA debug
-override cookie still beats an accepted variant.
-
 ## 🔧 Configuration
 
 Publish the config (`php artisan vendor:publish --tag=config`). Key options:
@@ -173,11 +154,6 @@ Publish the config (`php artisan vendor:publish --tag=config`). Key options:
 ],
 'debug_middleware' => env('AB_TESTING_DEBUG_MIDDLEWARE', false), // opt-in panel (also needs app.debug)
 'cookie' => ['secure' => null, 'same_site' => 'Lax'],            // null secure = mirror the request
-'accept' => [
-    'webhook_url' => env('AB_TESTING_ACCEPT_WEBHOOK_URL'),       // cleanup-report intake (e.g. Slack bot)
-    'repo' => env('AB_TESTING_REPO'),                            // repo hint for the PR bot
-    'scan' => [...],                                             // paths/extensions/caps for the code scan
-],
 ```
 
 `cache.*` and `session_key` are honoured since v1.6. `database.*_table` and
