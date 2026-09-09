@@ -103,16 +103,34 @@ class AbTestingServiceProviderTest extends TestCase
     /** @test */
     public function it_registers_debug_middleware_when_debug_enabled()
     {
-        config(['app.debug' => true]);
-        
+        config(['app.debug' => true, 'ab-testing.debug_middleware' => true]);
+
         // Re-instantiate the service provider to test the debug condition
         $provider = new AbTestingServiceProvider($this->app);
         $provider->boot();
 
         $router = $this->app['router'];
         $webMiddleware = $router->getMiddlewareGroups()['web'] ?? [];
-        
+
         $this->assertContains(DebugMiddleware::class, $webMiddleware);
+    }
+
+    /** @test */
+    public function it_does_not_register_debug_middleware_without_opt_in()
+    {
+        // app.debug alone is no longer enough — the config flag must opt in.
+        config(['app.debug' => true, 'ab-testing.debug_middleware' => false]);
+
+        $app = $this->createApplication();
+        $app['config']->set('app.debug', true);
+        $app['config']->set('ab-testing.debug_middleware', false);
+
+        $provider = new AbTestingServiceProvider($app);
+        $provider->boot();
+
+        $webMiddleware = $app['router']->getMiddlewareGroups()['web'] ?? [];
+
+        $this->assertNotContains(DebugMiddleware::class, $webMiddleware);
     }
 
     /** @test */

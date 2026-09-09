@@ -17,9 +17,31 @@ use Homemove\AbTesting\Support\Statistics;
 class ExperimentStatsService
 {
     /**
+     * A valid conversion-event selection for this experiment: the universal
+     * default, the persisted primary metric, or any event actually tracked.
+     * Anything else falls back to the experiment's own conversion event.
+     */
+    public function resolveConversionEvent(Experiment $experiment, $raw): string
+    {
+        $default = $experiment->conversionEvent();
+
+        if (!is_string($raw) || $raw === '' || $raw === $default) {
+            return $default;
+        }
+
+        if ($raw === 'conversion') {
+            return 'conversion';
+        }
+
+        return Event::where('experiment_id', $experiment->id)->where('event_name', $raw)->exists()
+            ? $raw
+            : $default;
+    }
+
+    /**
      * @return array<string, array{weight: mixed, assigned: int, converted: int, conversion_rate: float|int}>
      */
-    public function variantStats(Experiment $experiment, ?string $deviceType = null): array
+    public function variantStats(Experiment $experiment, ?string $deviceType = null, ?string $conversionEvent = null): array
     {
         $assignments = UserAssignment::where('experiment_id', $experiment->id)
             ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
@@ -29,7 +51,7 @@ class ExperimentStatsService
             ->toArray();
 
         $conversions = Event::where('experiment_id', $experiment->id)
-            ->where('event_name', 'conversion')
+            ->where('event_name', $conversionEvent ?? $experiment->conversionEvent())
             ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
             ->selectRaw('variant, COUNT(DISTINCT user_id) as count')
             ->groupBy('variant')
@@ -122,8 +144,9 @@ class ExperimentStatsService
      * Percentage-point change of the cumulative conversion rate vs where it
      * stood at the start of today. Null when yesterday had no participants.
      */
-    public function rateChangePp(Experiment $experiment, ?string $deviceType = null): ?float
+    public function rateChangePp(Experiment $experiment, ?string $deviceType = null, ?string $conversionEvent = null): ?float
     {
+        $conversionEvent ??= $experiment->conversionEvent();
         $todayStart = now()->startOfDay();
 
         $assignedBefore = UserAssignment::where('experiment_id', $experiment->id)
@@ -136,7 +159,7 @@ class ExperimentStatsService
         }
 
         $convertedBefore = Event::where('experiment_id', $experiment->id)
-            ->where('event_name', 'conversion')
+            ->where('event_name', $conversionEvent)
             ->where('created_at', '<', $todayStart)
             ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
             ->distinct('user_id')
@@ -146,7 +169,7 @@ class ExperimentStatsService
             ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
             ->count();
         $convertedNow = Event::where('experiment_id', $experiment->id)
-            ->where('event_name', 'conversion')
+            ->where('event_name', $conversionEvent)
             ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
             ->distinct('user_id')
             ->count();
@@ -161,8 +184,10 @@ class ExperimentStatsService
      * Step-level funnel from a host-bound provider when one exists and has
      * data; otherwise the package-native reach funnel from ab_events.
      */
-    public function funnel(Experiment $experiment, ?string $deviceType = null): ?array
+    public function funnel(Experiment $experiment, ?string $deviceType = null, ?string $conversionEvent = null): ?array
     {
+        // Host-provided step funnels are not re-pinned by the conversion lens;
+        // only the package-native reach funnel reorders around it.
         if (app()->bound(FunnelStepDataProvider::class)) {
             $provided = app(FunnelStepDataProvider::class)->funnelFor($experiment->name, $deviceType);
             if ($provided !== null && ($provided['steps'] ?? []) !== []) {
@@ -173,6 +198,6 @@ class ExperimentStatsService
             }
         }
 
-        return (new ReachFunnelService)->funnelFor($experiment, $deviceType);
+        return (new ReachFunnelService)->funnelFor($experiment, $deviceType, $conversionEvent);
     }
 }

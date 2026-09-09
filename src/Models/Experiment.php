@@ -18,6 +18,7 @@ class Experiment extends Model
         'traffic_allocation',
         'target_applications',
         'success_metrics',
+        'primary_metric',
         'custom_events',
         'minimum_sample_size',
         'confidence_level',
@@ -41,6 +42,15 @@ class Experiment extends Model
         'confidence_level' => 'decimal:2',
     ];
 
+    /** The event the dashboard treats as the conversion for this experiment. */
+    public function conversionEvent(): string
+    {
+        // Explicit checks: '?:' would drop an event literally named "0".
+        return $this->primary_metric !== null && $this->primary_metric !== ''
+            ? $this->primary_metric
+            : 'conversion';
+    }
+
     public function assignments(): HasMany
     {
         return $this->hasMany(UserAssignment::class);
@@ -60,7 +70,7 @@ class Experiment extends Model
             ->toArray();
 
         $conversions = $this->events()
-            ->where('event_name', 'conversion')
+            ->where('event_name', $this->conversionEvent())
             ->selectRaw('variant, COUNT(DISTINCT user_id) as conversions')
             ->groupBy('variant')
             ->pluck('conversions', 'variant')
@@ -154,7 +164,7 @@ class Experiment extends Model
         $assignments = $this->assignments()->where('variant', $variant)->count();
         $conversions = $this->events()
             ->where('variant', $variant)
-            ->where('event_name', 'conversion')
+            ->where('event_name', $this->conversionEvent())
             ->distinct('user_id')
             ->count();
 

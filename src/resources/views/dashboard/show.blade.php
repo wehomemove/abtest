@@ -6,7 +6,7 @@
 <div class="w-full max-w-none px-4 sm:px-6 lg:px-8">
 <!-- Header Section -->
 <div class="mb-8 bg-gradient-to-r from-gray-700 to-gray-900 rounded shadow-xl p-6 text-white">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-5">
         <div>
             <h1 class="text-3xl font-bold mb-2">{{ $experiment->name }}</h1>
             <p class="text-gray-100 text-lg">{{ $experiment->description }}</p>
@@ -31,9 +31,48 @@
                         Stats filtered to {{ ucfirst($activeDeviceType) }}
                     </span>
                 @endif
+                @if ($activeConversionEvent !== 'conversion')
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-400 text-gray-900">
+                        <i class="fas fa-bullseye mr-1"></i>
+                        Conversion = {{ str_replace(['_', '-'], ' ', $activeConversionEvent) }}{{ $activeConversionEvent === $experiment->conversionEvent() ? ' (primary)' : ' (viewing)' }}
+                    </span>
+                @endif
             </div>
         </div>
-        <div class="flex items-center space-x-3">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-t border-white/20 pt-4">
+            <div class="flex flex-wrap items-center gap-3">
+            @php
+                $conversionEventOptions = array_keys($stats['event_counts_by_name'] ?? []);
+                // The active event must stay selectable even when a device
+                // filter leaves it with no rows (counts are device-filtered).
+                $conversionEventOptions[] = $activeConversionEvent;
+                $conversionEventOptions = array_values(array_unique($conversionEventOptions));
+                sort($conversionEventOptions);
+                $conversionEventOptions = array_values(array_filter($conversionEventOptions, fn ($n) => $n !== 'conversion'));
+                array_unshift($conversionEventOptions, 'conversion');
+            @endphp
+            <label class="sr-only" for="conversion-event">Conversion metric</label>
+            <select id="conversion-event"
+                    title="Which tracked event counts as the conversion — recomputes every stat on this page"
+                    class="px-3 py-3 rounded text-sm text-gray-800 border border-transparent focus:ring-2 focus:ring-yellow-400"
+                    onchange="handleConversionEventChange(this.value)">
+                @foreach($conversionEventOptions as $eventName)
+                    <option value="{{ $eventName }}" {{ $activeConversionEvent === $eventName ? 'selected' : '' }}>
+                        Conversion: {{ str_replace(['_', '-'], ' ', $eventName) }}{{ $experiment->conversionEvent() === $eventName && $eventName !== 'conversion' ? ' (primary)' : '' }}
+                    </option>
+                @endforeach
+            </select>
+            @if ($activeConversionEvent !== $experiment->conversionEvent())
+                <form action="{{ route('ab-testing.dashboard.primary-metric', $experiment) }}" method="POST" class="inline">
+                    @csrf
+                    <input type="hidden" name="primary_metric" value="{{ $activeConversionEvent }}">
+                    <button type="submit"
+                            title="Make this the experiment's default conversion metric"
+                            class="px-4 py-3 bg-yellow-400 text-gray-900 rounded text-sm font-medium hover:bg-yellow-300 transition-all duration-200">
+                        Save as primary
+                    </button>
+                </form>
+            @endif
             <label class="sr-only" for="device-filter">Device</label>
             <select id="device-filter"
                     class="px-3 py-3 rounded text-sm text-gray-800 border border-transparent focus:ring-2 focus:ring-yellow-400"
@@ -43,6 +82,8 @@
                 <option value="tablet" {{ $activeDeviceType === 'tablet' ? 'selected' : '' }}>Tablet</option>
                 <option value="desktop" {{ $activeDeviceType === 'desktop' ? 'selected' : '' }}>Desktop</option>
             </select>
+            </div>
+            <div class="flex items-center gap-3">
             <form action="{{ route('ab-testing.dashboard.toggle', $experiment) }}" method="POST" class="inline">
                 @csrf
                 @method('PATCH')
@@ -54,6 +95,7 @@
                class="px-6 py-3 bg-white text-red-600 rounded hover:bg-red-50 font-medium transition-all duration-200 transform hover:scale-105">
                 Edit
             </a>
+            </div>
         </div>
     </div>
 </div>
@@ -170,33 +212,10 @@ Each arm's own confidence vs control is in the table below."></i>
 </div>
 
 <div class="bg-white shadow rounded mb-8">
-    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+    <div class="px-6 py-4 border-b border-gray-200">
         <h3 class="text-lg font-medium text-gray-900">Variant Performance</h3>
-        @php
-            $variantTableEventFilters = array_values(array_filter(
-                array_keys($stats['event_counts_by_name'] ?? []),
-                fn ($name) => $name !== 'conversion',
-            ));
-            sort($variantTableEventFilters);
-        @endphp
-        <select id="variant-table-event-filter"
-                class="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
-                onchange="handleEventFilterChange(this.value)">
-            <option value="">All participants</option>
-            @foreach($variantTableEventFilters as $eventName)
-                <option value="{{ $eventName }}" {{ ($activeEventFilter ?? null) === $eventName ? 'selected' : '' }}>
-                    Hit {{ str_replace(['_', '-'], ' ', $eventName) }}
-                </option>
-            @endforeach
-        </select>
     </div>
     <div class="p-6">
-        @if($activeEventFilter ?? null)
-            <div class="mb-4 flex items-center gap-2 rounded bg-yellow-50 border border-yellow-200 px-3 py-2 text-sm text-yellow-800">
-                <i class="fas fa-filter text-yellow-500"></i>
-                Showing users who hit <strong>{{ str_replace(['_', '-'], ' ', $activeEventFilter) }}</strong> — the headline cards above remain unfiltered.
-            </div>
-        @endif
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead>
@@ -257,7 +276,6 @@ Each arm's own confidence vs control is in the table below."></i>
         </div>
     </div>
 </div>
-
 <!-- Charts Section -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
 
@@ -272,11 +290,11 @@ Each arm's own confidence vs control is in the table below."></i>
             @php
                 $variantChartEventNames = array_keys($stats['event_counts_by_name'] ?? []);
                 sort($variantChartEventNames);
-                if (in_array('conversion', $variantChartEventNames, true)) {
-                    $variantChartEventNames = array_values(array_filter($variantChartEventNames, fn ($n) => $n !== 'conversion'));
-                    array_unshift($variantChartEventNames, 'conversion');
+                if (in_array($activeConversionEvent, $variantChartEventNames, true)) {
+                    $variantChartEventNames = array_values(array_filter($variantChartEventNames, fn ($n) => $n !== $activeConversionEvent));
+                    array_unshift($variantChartEventNames, $activeConversionEvent);
                 }
-                $initialChartEvent = $variantChartEventNames[0] ?? 'conversion';
+                $initialChartEvent = $variantChartEventNames[0] ?? $activeConversionEvent;
             @endphp
             <select id="variant-chart-event"
                     class="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
@@ -460,12 +478,23 @@ let experimentData = {
     id: {{ $experiment->id }}
 };
 window.activeDeviceType = @json($activeDeviceType);
+window.activeConversionEvent = @json($activeConversionEvent);
 
 function buildApiUrl(path, params = {}) {
     const url = new URL(`/api/ab-testing/experiments/${experimentData.id}${path}`, window.location.origin);
     if (window.activeDeviceType) url.searchParams.set('device_type', window.activeDeviceType);
+    // Keep every poll on the same conversion lens as the rendered page.
+    if (window.activeConversionEvent) url.searchParams.set('event', window.activeConversionEvent);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
     return url.pathname + url.search;
+}
+
+function handleConversionEventChange(value) {
+    // Always explicit: a bare URL resolves to the persisted primary metric,
+    // so "conversion" must be sent as ?event=conversion to override it.
+    const url = new URL(window.location.href);
+    url.searchParams.set('event', value);
+    window.location.href = url.toString();
 }
 
 function handleDeviceFilterChange(value) {
@@ -475,16 +504,6 @@ function handleDeviceFilterChange(value) {
         url.searchParams.set('device_type', value);
     } else {
         url.searchParams.delete('device_type');
-    }
-    window.location.href = url.toString();
-}
-
-function handleEventFilterChange(value) {
-    const url = new URL(window.location.href);
-    if (value) {
-        url.searchParams.set('event_filter', value);
-    } else {
-        url.searchParams.delete('event_filter');
     }
     window.location.href = url.toString();
 }

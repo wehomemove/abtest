@@ -6,7 +6,7 @@ use Homemove\AbTesting\Http\Controllers\TestController;
 
 Route::prefix('ab-testing')
     ->name('ab-testing.')
-    ->middleware(['web'])
+    ->middleware(config('ab-testing.routes.dashboard_middleware', ['web']))
     ->group(function () {
         Route::prefix('dashboard')
             ->name('dashboard.')
@@ -19,20 +19,29 @@ Route::prefix('ab-testing')
                 Route::put('/{experiment}', [DashboardController::class, 'update'])->name('update');
                 Route::delete('/{experiment}', [DashboardController::class, 'destroy'])->name('destroy');
                 Route::patch('/{experiment}/toggle', [DashboardController::class, 'toggleStatus'])->name('toggle');
+                Route::post('/{experiment}/primary-metric', [DashboardController::class, 'setPrimaryMetric'])->name('primary-metric');
             });
-        
+
         // Test page
         Route::get('/test', [TestController::class, 'index'])->name('test');
-        
+
         // Debug routes
         Route::post('/clear-session', function () {
+            $sessionKey = config('ab-testing.session_key', 'ab_user_id');
+
             // Clear session
-            session()->forget('ab_user_id');
+            session()->forget($sessionKey);
             session()->save();
-            
+
             // Clear A/B testing cookie
-            setcookie('ab_user_id', '', time() - 3600, '/', '', false, true);
-            
+            setcookie($sessionKey, '', [
+                'expires' => time() - 3600,
+                'path' => '/',
+                'secure' => config('ab-testing.cookie.secure') ?? request()->isSecure(),
+                'httponly' => true,
+                'samesite' => config('ab-testing.cookie.same_site', 'Lax'),
+            ]);
+
             return response()->json(['success' => true]);
         })->name('clear-session');
     });

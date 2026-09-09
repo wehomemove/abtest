@@ -22,14 +22,6 @@ class DebugMiddleware
         $experiments = $service->getDebugExperiments();
         $userInfo = $service->getDebugUserInfo();
 
-        // Debug logging
-        \Log::info('AB Debug Middleware', [
-            'experiments' => $experiments,
-            'content_type' => $response->headers->get('Content-Type'),
-            'has_body_tag' => str_contains($response->getContent(), '</body>'),
-            'experiments_count' => count($experiments)
-        ]);
-
         // Always show debug panel when debug is enabled, even if no experiments yet
         // Experiments may be populated after middleware runs
 
@@ -50,7 +42,6 @@ class DebugMiddleware
             $injection = $jsHelper . $debugHtml;
             $content = str_replace('</body>', $injection . '</body>', $content);
             $response->setContent($content);
-            \Log::info('AB Debug: Successfully injected JS helper and debug HTML');
         } catch (\Exception $e) {
             \Log::error('AB Debug: Failed to render debug view', ['error' => $e->getMessage()]);
         }

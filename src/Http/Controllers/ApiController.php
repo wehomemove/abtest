@@ -138,12 +138,15 @@ class ApiController extends Controller
                 ], 404);
             }
 
+            $conversionEvent = app(ExperimentStatsService::class)
+                ->resolveConversionEvent($exp, $request->query('event'));
+
             $stats = [];
             foreach ($exp->variants as $variant => $weight) {
                 $assignments = $exp->assignments()->where('variant', $variant)->count();
                 $conversions = $exp->events()
                     ->where('variant', $variant)
-                    ->where('event_name', 'conversion')
+                    ->where('event_name', $conversionEvent)
                     ->distinct('user_id')
                     ->count();
 
@@ -186,8 +189,9 @@ class ApiController extends Controller
             $experiment = Experiment::findOrFail($experimentId);
             $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
             $service = app(ExperimentStatsService::class);
+            $conversionEvent = $service->resolveConversionEvent($experiment, $request->query('event'));
 
-            $variantStats = $service->variantStats($experiment, $deviceType);
+            $variantStats = $service->variantStats($experiment, $deviceType, $conversionEvent);
             $controlRate = $variantStats['control']['conversion_rate'] ?? 0;
 
             $variants = [];
@@ -213,13 +217,14 @@ class ApiController extends Controller
                 'variants' => $variants,
                 'statistical_significance' => $service->headlineSignificance($significanceByVariant),
                 'significance_by_variant' => $significanceByVariant,
-                'rate_change_pp' => $service->rateChangePp($experiment, $deviceType),
+                'rate_change_pp' => $service->rateChangePp($experiment, $deviceType, $conversionEvent),
                 'event_counts_by_name' => $service->eventCountsByName($experiment, $deviceType),
+                'conversion_event' => $conversionEvent,
                 'updated_at' => now()->toISOString(),
             ];
 
             if ($request->query('include') === 'funnel') {
-                $payload['funnel'] = $service->funnel($experiment, $deviceType);
+                $payload['funnel'] = $service->funnel($experiment, $deviceType, $conversionEvent);
             }
 
             return response()->json($payload);
@@ -316,6 +321,8 @@ class ApiController extends Controller
             $experiment = Experiment::findOrFail($experimentId);
             $period = in_array($request->get('period'), ['24h', '7d', '30d'], true) ? $request->get('period') : '24h';
             $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
+            $conversionEvent = app(ExperimentStatsService::class)
+                ->resolveConversionEvent($experiment, $request->query('event'));
 
             $now = now();
             [$startTime, $intervalMinutes, $points, $labelFormat] = match ($period) {
@@ -339,7 +346,7 @@ class ApiController extends Controller
             // No time filter: a conversion belongs to its user's assignment
             // cohort regardless of when it happened.
             $conversionRows = $experiment->events()
-                ->where('event_name', 'conversion')
+                ->where('event_name', $conversionEvent)
                 ->when($deviceType !== null, fn ($q) => $q->where('device_type', $deviceType))
                 ->get(['variant', 'user_id'])
                 ->unique(fn ($row) => $row->variant . '|' . $row->user_id);

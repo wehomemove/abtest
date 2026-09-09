@@ -26,21 +26,22 @@ class DashboardController extends Controller
     public function show(Experiment $experiment, Request $request)
     {
         $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
-        $eventFilter = $this->resolveEventFilter($request->query('event_filter'), $experiment, $deviceType);
-        $stats = $this->getExperimentStats($experiment, $deviceType, $eventFilter);
-        $stats['funnel'] = $this->resolveFunnel($experiment, $deviceType);
+        $conversionEvent = app(ExperimentStatsService::class)
+            ->resolveConversionEvent($experiment, $request->query('event'));
+        $stats = $this->getExperimentStats($experiment, $deviceType, $conversionEvent);
+        $stats['funnel'] = $this->resolveFunnel($experiment, $deviceType, $conversionEvent);
 
         return view('ab-testing::dashboard.show', [
             'experiment' => $experiment,
             'stats' => $stats,
             'activeDeviceType' => $deviceType,
-            'activeEventFilter' => $eventFilter,
+            'activeConversionEvent' => $conversionEvent,
         ]);
     }
 
-    protected function resolveFunnel(Experiment $experiment, ?string $deviceType): ?array
+    protected function resolveFunnel(Experiment $experiment, ?string $deviceType, ?string $conversionEvent = null): ?array
     {
-        return app(ExperimentStatsService::class)->funnel($experiment, $deviceType);
+        return app(ExperimentStatsService::class)->funnel($experiment, $deviceType, $conversionEvent);
     }
 
     /**
@@ -59,21 +60,6 @@ class DashboardController extends Controller
         }
 
         return $validated;
-    }
-
-    protected function resolveEventFilter(?string $eventFilter, Experiment $experiment, ?string $deviceType = null): ?string
-    {
-        if (! $eventFilter || $eventFilter === 'conversion') {
-            return null;
-        }
-
-        $query = Event::where('experiment_id', $experiment->id)
-            ->where('event_name', $eventFilter);
-        if ($deviceType !== null) {
-            $query->where('device_type', $deviceType);
-        }
-
-        return $query->exists() ? $eventFilter : null;
     }
 
     public function create()
@@ -168,6 +154,34 @@ class DashboardController extends Controller
             ->with('success', 'Experiment deleted successfully!');
     }
 
+    /**
+     * Persist which tracked event the dashboard treats as this experiment's
+     * conversion. 'conversion' (the universal default) stores as null.
+     */
+    public function setPrimaryMetric(Request $request, Experiment $experiment)
+    {
+        $validated = $request->validate([
+            'primary_metric' => 'nullable|string|max:255',
+        ]);
+
+        $metric = $validated['primary_metric'] ?? null;
+        if ($metric === '' || $metric === 'conversion') {
+            $metric = null;
+        }
+
+        if ($metric !== null
+            && !Event::where('experiment_id', $experiment->id)->where('event_name', $metric)->exists()) {
+            return back()->withErrors(['primary_metric' => 'That event has not been tracked for this experiment.']);
+        }
+
+        $experiment->update(['primary_metric' => $metric]);
+
+        return redirect()->route('ab-testing.dashboard.show', $experiment)
+            ->with('success', $metric === null
+                ? 'Primary metric reset to conversion.'
+                : "Primary metric saved: {$metric}");
+    }
+
     public function toggleStatus(Experiment $experiment)
     {
         $experiment->update(['is_active' => !$experiment->is_active]);
@@ -178,59 +192,21 @@ class DashboardController extends Controller
         return back()->with('success', 'Experiment status updated!');
     }
 
-    protected function getExperimentStats(Experiment $experiment, ?string $deviceType = null, ?string $eventFilter = null): array
+    protected function getExperimentStats(Experiment $experiment, ?string $deviceType = null, ?string $conversionEvent = null): array
     {
+        $conversionEvent ??= $experiment->conversionEvent();
+
         // Shared computations — same numbers the polled API serves.
         $statsService = app(ExperimentStatsService::class);
-        $unfilteredVariantStats = $statsService->variantStats($experiment, $deviceType);
+        $unfilteredVariantStats = $statsService->variantStats($experiment, $deviceType, $conversionEvent);
         $assignments = array_map(fn ($v) => $v['assigned'], $unfilteredVariantStats);
         $conversions = array_map(fn ($v) => $v['converted'], $unfilteredVariantStats);
         $eventCountsByName = $statsService->eventCountsByName($experiment, $deviceType);
 
-        // When an event filter is active, the Variant Performance table switches to funnel
-        // mode: participants = users who fired $eventFilter, converted = those who also
-        // fired 'conversion'. Top stat cards, chart, and significance keep their unfiltered
-        // numbers — significance answers "is the variant winning overall" and shouldn't
-        // shift around as the user explores the funnel filter.
-        $variantAssigned = $assignments;
-        $variantConverted = $conversions;
-
-        if ($eventFilter !== null) {
-            $filteredAssignedQuery = Event::where('experiment_id', $experiment->id)
-                ->where('event_name', $eventFilter);
-            if ($deviceType !== null) {
-                $filteredAssignedQuery->where('device_type', $deviceType);
-            }
-            $variantAssigned = (clone $filteredAssignedQuery)
-                ->selectRaw('variant, COUNT(DISTINCT user_id) as count')
-                ->groupBy('variant')
-                ->pluck('count', 'variant')
-                ->toArray();
-
-            $filterUserIdsQuery = Event::where('experiment_id', $experiment->id)
-                ->where('event_name', $eventFilter)
-                ->select('user_id');
-            if ($deviceType !== null) {
-                $filterUserIdsQuery->where('device_type', $deviceType);
-            }
-
-            $filteredConvertedQuery = Event::where('experiment_id', $experiment->id)
-                ->where('event_name', 'conversion')
-                ->whereIn('user_id', $filterUserIdsQuery);
-            if ($deviceType !== null) {
-                $filteredConvertedQuery->where('device_type', $deviceType);
-            }
-            $variantConverted = $filteredConvertedQuery
-                ->selectRaw('variant, COUNT(DISTINCT user_id) as count')
-                ->groupBy('variant')
-                ->pluck('count', 'variant')
-                ->toArray();
-        }
-
         $stats = [];
         foreach ($experiment->variants as $variant => $weight) {
-            $assigned = $variantAssigned[$variant] ?? 0;
-            $converted = $variantConverted[$variant] ?? 0;
+            $assigned = $assignments[$variant] ?? 0;
+            $converted = $conversions[$variant] ?? 0;
             $rate = $assigned > 0 ? round(($converted / $assigned) * 100, 2) : 0;
 
             $stats[$variant] = [
@@ -259,7 +235,7 @@ class DashboardController extends Controller
         $todayAssignments = $todayAssignmentsQuery->count();
 
         $todayConversionsQuery = Event::where('experiment_id', $experiment->id)
-            ->where('event_name', 'conversion')
+            ->where('event_name', $conversionEvent)
             ->where('created_at', '>=', $todayStart);
         if ($deviceType !== null) {
             $todayConversionsQuery->where('device_type', $deviceType);
@@ -272,7 +248,7 @@ class DashboardController extends Controller
         // value doesn't disagree with the headline question (does the variant win overall).
         $significanceByVariant = $statsService->significanceByVariant($unfilteredVariantStats);
         $significance = $statsService->headlineSignificance($significanceByVariant);
-        $rateChangePp = $statsService->rateChangePp($experiment, $deviceType);
+        $rateChangePp = $statsService->rateChangePp($experiment, $deviceType, $conversionEvent);
 
         return [
             'variants' => $stats,
