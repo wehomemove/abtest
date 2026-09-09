@@ -28,15 +28,13 @@ class DashboardController extends Controller
         $deviceType = $this->resolveDeviceTypeFilter($request->query('device_type'));
         $conversionEvent = app(ExperimentStatsService::class)
             ->resolveConversionEvent($experiment, $request->query('event'));
-        $eventFilter = $this->resolveEventFilter($request->query('event_filter'), $experiment, $deviceType, $conversionEvent);
-        $stats = $this->getExperimentStats($experiment, $deviceType, $eventFilter, $conversionEvent);
+        $stats = $this->getExperimentStats($experiment, $deviceType, $conversionEvent);
         $stats['funnel'] = $this->resolveFunnel($experiment, $deviceType, $conversionEvent);
 
         return view('ab-testing::dashboard.show', [
             'experiment' => $experiment,
             'stats' => $stats,
             'activeDeviceType' => $deviceType,
-            'activeEventFilter' => $eventFilter,
             'activeConversionEvent' => $conversionEvent,
         ]);
     }
@@ -62,21 +60,6 @@ class DashboardController extends Controller
         }
 
         return $validated;
-    }
-
-    protected function resolveEventFilter(?string $eventFilter, Experiment $experiment, ?string $deviceType = null, ?string $conversionEvent = null): ?string
-    {
-        if (! $eventFilter || $eventFilter === ($conversionEvent ?? $experiment->conversionEvent())) {
-            return null;
-        }
-
-        $query = Event::where('experiment_id', $experiment->id)
-            ->where('event_name', $eventFilter);
-        if ($deviceType !== null) {
-            $query->where('device_type', $deviceType);
-        }
-
-        return $query->exists() ? $eventFilter : null;
     }
 
     public function create()
@@ -209,7 +192,7 @@ class DashboardController extends Controller
         return back()->with('success', 'Experiment status updated!');
     }
 
-    protected function getExperimentStats(Experiment $experiment, ?string $deviceType = null, ?string $eventFilter = null, ?string $conversionEvent = null): array
+    protected function getExperimentStats(Experiment $experiment, ?string $deviceType = null, ?string $conversionEvent = null): array
     {
         $conversionEvent ??= $experiment->conversionEvent();
 
@@ -220,50 +203,10 @@ class DashboardController extends Controller
         $conversions = array_map(fn ($v) => $v['converted'], $unfilteredVariantStats);
         $eventCountsByName = $statsService->eventCountsByName($experiment, $deviceType);
 
-        // When an event filter is active, the Variant Performance table switches to funnel
-        // mode: participants = users who fired $eventFilter, converted = those who also
-        // fired 'conversion'. Top stat cards, chart, and significance keep their unfiltered
-        // numbers — significance answers "is the variant winning overall" and shouldn't
-        // shift around as the user explores the funnel filter.
-        $variantAssigned = $assignments;
-        $variantConverted = $conversions;
-
-        if ($eventFilter !== null) {
-            $filteredAssignedQuery = Event::where('experiment_id', $experiment->id)
-                ->where('event_name', $eventFilter);
-            if ($deviceType !== null) {
-                $filteredAssignedQuery->where('device_type', $deviceType);
-            }
-            $variantAssigned = (clone $filteredAssignedQuery)
-                ->selectRaw('variant, COUNT(DISTINCT user_id) as count')
-                ->groupBy('variant')
-                ->pluck('count', 'variant')
-                ->toArray();
-
-            $filterUserIdsQuery = Event::where('experiment_id', $experiment->id)
-                ->where('event_name', $eventFilter)
-                ->select('user_id');
-            if ($deviceType !== null) {
-                $filterUserIdsQuery->where('device_type', $deviceType);
-            }
-
-            $filteredConvertedQuery = Event::where('experiment_id', $experiment->id)
-                ->where('event_name', $conversionEvent)
-                ->whereIn('user_id', $filterUserIdsQuery);
-            if ($deviceType !== null) {
-                $filteredConvertedQuery->where('device_type', $deviceType);
-            }
-            $variantConverted = $filteredConvertedQuery
-                ->selectRaw('variant, COUNT(DISTINCT user_id) as count')
-                ->groupBy('variant')
-                ->pluck('count', 'variant')
-                ->toArray();
-        }
-
         $stats = [];
         foreach ($experiment->variants as $variant => $weight) {
-            $assigned = $variantAssigned[$variant] ?? 0;
-            $converted = $variantConverted[$variant] ?? 0;
+            $assigned = $assignments[$variant] ?? 0;
+            $converted = $conversions[$variant] ?? 0;
             $rate = $assigned > 0 ? round(($converted / $assigned) * 100, 2) : 0;
 
             $stats[$variant] = [

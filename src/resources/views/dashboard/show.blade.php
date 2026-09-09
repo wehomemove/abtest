@@ -6,7 +6,7 @@
 <div class="w-full max-w-none px-4 sm:px-6 lg:px-8">
 <!-- Header Section -->
 <div class="mb-8 bg-gradient-to-r from-gray-700 to-gray-900 rounded shadow-xl p-6 text-white">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-5">
         <div>
             <h1 class="text-3xl font-bold mb-2">{{ $experiment->name }}</h1>
             <p class="text-gray-100 text-lg">{{ $experiment->description }}</p>
@@ -39,7 +39,8 @@
                 @endif
             </div>
         </div>
-        <div class="flex items-center space-x-3">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-t border-white/20 pt-4">
+            <div class="flex flex-wrap items-center gap-3">
             @php
                 $conversionEventOptions = array_keys($stats['event_counts_by_name'] ?? []);
                 // The active event must stay selectable even when a device
@@ -81,6 +82,8 @@
                 <option value="tablet" {{ $activeDeviceType === 'tablet' ? 'selected' : '' }}>Tablet</option>
                 <option value="desktop" {{ $activeDeviceType === 'desktop' ? 'selected' : '' }}>Desktop</option>
             </select>
+            </div>
+            <div class="flex items-center gap-3">
             <form action="{{ route('ab-testing.dashboard.toggle', $experiment) }}" method="POST" class="inline">
                 @csrf
                 @method('PATCH')
@@ -92,6 +95,7 @@
                class="px-6 py-3 bg-white text-red-600 rounded hover:bg-red-50 font-medium transition-all duration-200 transform hover:scale-105">
                 Edit
             </a>
+            </div>
         </div>
     </div>
 </div>
@@ -208,33 +212,10 @@ Each arm's own confidence vs control is in the table below."></i>
 </div>
 
 <div class="bg-white shadow rounded mb-8">
-    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+    <div class="px-6 py-4 border-b border-gray-200">
         <h3 class="text-lg font-medium text-gray-900">Variant Performance</h3>
-        @php
-            $variantTableEventFilters = array_values(array_filter(
-                array_keys($stats['event_counts_by_name'] ?? []),
-                fn ($name) => $name !== $activeConversionEvent,
-            ));
-            sort($variantTableEventFilters);
-        @endphp
-        <select id="variant-table-event-filter"
-                class="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
-                onchange="handleEventFilterChange(this.value)">
-            <option value="">All participants</option>
-            @foreach($variantTableEventFilters as $eventName)
-                <option value="{{ $eventName }}" {{ ($activeEventFilter ?? null) === $eventName ? 'selected' : '' }}>
-                    Hit {{ str_replace(['_', '-'], ' ', $eventName) }}
-                </option>
-            @endforeach
-        </select>
     </div>
     <div class="p-6">
-        @if($activeEventFilter ?? null)
-            <div class="mb-4 flex items-center gap-2 rounded bg-yellow-50 border border-yellow-200 px-3 py-2 text-sm text-yellow-800">
-                <i class="fas fa-filter text-yellow-500"></i>
-                Showing users who hit <strong>{{ str_replace(['_', '-'], ' ', $activeEventFilter) }}</strong> — the headline cards above remain unfiltered.
-            </div>
-        @endif
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead>
@@ -523,16 +504,6 @@ function handleDeviceFilterChange(value) {
         url.searchParams.set('device_type', value);
     } else {
         url.searchParams.delete('device_type');
-    }
-    window.location.href = url.toString();
-}
-
-function handleEventFilterChange(value) {
-    const url = new URL(window.location.href);
-    if (value) {
-        url.searchParams.set('event_filter', value);
-    } else {
-        url.searchParams.delete('event_filter');
     }
     window.location.href = url.toString();
 }
