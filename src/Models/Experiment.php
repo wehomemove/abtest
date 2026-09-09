@@ -45,7 +45,10 @@ class Experiment extends Model
     /** The event the dashboard treats as the conversion for this experiment. */
     public function conversionEvent(): string
     {
-        return $this->primary_metric ?: 'conversion';
+        // Explicit checks: '?:' would drop an event literally named "0".
+        return $this->primary_metric !== null && $this->primary_metric !== ''
+            ? $this->primary_metric
+            : 'conversion';
     }
 
     public function assignments(): HasMany

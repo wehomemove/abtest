@@ -125,9 +125,14 @@ Endpoints polled by the dashboard (all under `/api/ab-testing/experiments/{id}`)
 - `GET /chart-data?period=24h|7d|30d` — per-variant time series:
   `{labels, variants: {name: {participants[], conversion_rate[], color}}}`.
 
-> **Security note:** since v1.6 the read-only stats endpoints
-> (`/results`, `/stats`, `/recent-activity`, `/chart-data`) run under the
-> dashboard's middleware group (`routes.dashboard_middleware`, overridable via
+> **Security note:** `routes.dashboard_middleware` defaults to `['web']` —
+> **unauthenticated**, for backwards compatibility. The dashboard is a
+> management surface (create/edit/delete experiments, set the primary
+> metric): production apps MUST set real auth middleware here (e.g.
+> `['web', 'auth', 'your-admin-middleware']`) or gate the
+> `/ab-testing/dashboard*` paths in host middleware. Since v1.6 the
+> read-only stats endpoints (`/results`, `/stats`, `/recent-activity`,
+> `/chart-data`) run under the same group (overridable via
 > `routes.stats_middleware`), so gating the dashboard gates them too. The
 > tracking endpoints (`/track`, `/variant`, `/register-debug`) stay open —
 > they are called from every visitor's browser.

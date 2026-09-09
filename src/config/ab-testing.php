@@ -16,7 +16,12 @@ return [
         // Set false to register no package routes (host app takes over).
         'enabled' => true,
 
-        // Dashboard pages + dashboard-owned POST actions.
+        // Dashboard pages + dashboard-owned management actions (create,
+        // edit, delete, toggle, primary metric).
+        // SECURITY: the default is UNAUTHENTICATED (kept for backwards
+        // compatibility). Production apps must add their own auth here,
+        // e.g. ['web', 'auth', 'can:manage-experiments'], or gate the
+        // /ab-testing/dashboard* paths in host middleware.
         'dashboard_middleware' => ['web'],
 
         // Open tracking endpoints: POST /track, POST /variant,

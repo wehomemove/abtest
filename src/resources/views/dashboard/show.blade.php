@@ -42,6 +42,10 @@
         <div class="flex items-center space-x-3">
             @php
                 $conversionEventOptions = array_keys($stats['event_counts_by_name'] ?? []);
+                // The active event must stay selectable even when a device
+                // filter leaves it with no rows (counts are device-filtered).
+                $conversionEventOptions[] = $activeConversionEvent;
+                $conversionEventOptions = array_values(array_unique($conversionEventOptions));
                 sort($conversionEventOptions);
                 $conversionEventOptions = array_values(array_filter($conversionEventOptions, fn ($n) => $n !== 'conversion'));
                 array_unshift($conversionEventOptions, 'conversion');

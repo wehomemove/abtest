@@ -127,6 +127,21 @@ class ConversionEventLensTest extends TestCase
     }
 
     /** @test */
+    public function active_conversion_event_stays_selectable_under_a_device_filter()
+    {
+        $experiment = $this->makeExperiment();
+        // Events seeded with no device_type: a mobile filter matches none of
+        // them, so the dropdown would lose the active event without the guard.
+        $this->seedJourney($experiment, 'control', 'c1', ['lead_created', 'conversion']);
+
+        $response = $this->get(route('ab-testing.dashboard.show', $experiment) . '?event=lead_created&device_type=mobile');
+
+        $response->assertOk();
+        $response->assertViewHas('activeConversionEvent', 'lead_created');
+        $response->assertSee('value="lead_created"', false);
+    }
+
+    /** @test */
     public function stats_api_honours_the_event_param()
     {
         $experiment = $this->makeExperiment();
