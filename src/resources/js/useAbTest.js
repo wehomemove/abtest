@@ -38,9 +38,15 @@ export function useAbTest(experimentName, defaultVariant = 'control') {
     return null
   }
 
+  // Monotonic id of the latest initializeVariant() call. A fetch that resolves
+  // after a newer call (an overlapping refresh(), or a debug-panel override
+  // that bumped the counter) is stale and must not overwrite the current value.
+  let requestSeq = 0
+
   // Listen for debug panel variant changes
   const handleVariantChange = (event) => {
     if (event.detail && event.detail.experiment === experimentName) {
+      requestSeq++ // invalidate any in-flight fetch
       variant.value = event.detail.variant
       loading.value = false
     }
@@ -56,6 +62,7 @@ export function useAbTest(experimentName, defaultVariant = 'control') {
 
   // Initialize variant assignment
   const initializeVariant = async () => {
+    const seq = ++requestSeq
     try {
       loading.value = true
       error.value = null
@@ -84,7 +91,9 @@ export function useAbTest(experimentName, defaultVariant = 'control') {
       }
 
       const data = await response.json()
-      
+
+      if (seq !== requestSeq) return // a newer call or an override won
+
       if (data.success) {
         variant.value = data.variant || defaultVariant
       } else {
@@ -92,11 +101,12 @@ export function useAbTest(experimentName, defaultVariant = 'control') {
       }
 
     } catch (err) {
+      if (seq !== requestSeq) return // stale failure: leave the current value alone
       console.error(`Failed to get variant for ${experimentName}:`, err)
       error.value = err.message
       variant.value = defaultVariant
     } finally {
-      loading.value = false
+      if (seq === requestSeq) loading.value = false
     }
   }
 
