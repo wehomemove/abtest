@@ -31,6 +31,8 @@
 - Fix: the funnel-steps editor on create/edit emitted raw JSON inside a
   double-quoted `x-data` attribute, which broke the Alpine component as soon
   as an experiment had steps (uses `Js::from` now).
+- Variant names are validated on store/update: non-empty, `[a-z0-9_]+`. A
+  blank name used to save as arm `0`.
 - `Experiment::lifecycle()` returns `completed|draft|paused|scheduled|ended|running`
   (legacy/unknown statuses read as paused) and `storableStatus()` maps that
   back to a value the edit form can post. Package views use both.

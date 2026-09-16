@@ -668,4 +668,20 @@ class DashboardControllerTest extends TestCase
 
         $this->assertSame($end->toDateTimeString(), Experiment::find($id)->end_date->toDateTimeString());
     }
+
+    /** @test */
+    public function it_rejects_blank_or_non_snake_case_variant_names()
+    {
+        $base = ['name' => 'bad_arms', 'traffic_allocation' => 100];
+
+        $this->post('/ab-testing/dashboard', $base + ['variants' => ['control' => 50, '' => 50]])
+            ->assertSessionHasErrors('variants');
+        $this->post('/ab-testing/dashboard', $base + ['variants' => ['control' => 50, 'Variant B' => 50]])
+            ->assertSessionHasErrors('variants');
+        $this->assertDatabaseMissing('ab_experiments', ['name' => 'bad_arms']);
+
+        $this->post('/ab-testing/dashboard', $base + ['variants' => ['control' => 50, 'variant_b2' => 50]])
+            ->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('ab_experiments', ['name' => 'bad_arms']);
+    }
 }

@@ -62,6 +62,24 @@ class DashboardController extends Controller
         return $validated;
     }
 
+    /**
+     * Variant names are the keys of the variants array. A blank name posts as
+     * variants[] and PHP turns it into the integer key 0 — reject anything
+     * that is not a non-empty snake_case string.
+     */
+    protected function variantNamesRule(): \Closure
+    {
+        return function (string $attribute, $value, \Closure $fail): void {
+            foreach (array_keys((array) $value) as $name) {
+                if (!is_string($name) || !preg_match('/^[a-z0-9_]+$/', $name)) {
+                    $fail('Variant names must be non-empty and use only lowercase letters, numbers and underscores.');
+
+                    return;
+                }
+            }
+        };
+    }
+
     public function create()
     {
         return view('ab-testing::dashboard.create');
@@ -74,7 +92,7 @@ class DashboardController extends Controller
             'description' => 'nullable|string',
             'funnel_steps' => 'nullable|array',
             'funnel_steps.*' => 'nullable|string|max:100',
-            'variants' => 'required|array|min:2',
+            'variants' => ['required', 'array', 'min:2', $this->variantNamesRule()],
             'variants.*' => 'required|integer|min:0|max:100',
             'traffic_allocation' => 'required|integer|min:0|max:100',
             'status' => 'nullable|in:draft,running',
@@ -121,7 +139,7 @@ class DashboardController extends Controller
             'description' => 'nullable|string',
             'funnel_steps' => 'nullable|array',
             'funnel_steps.*' => 'nullable|string|max:100',
-            'variants' => 'required|array|min:2',
+            'variants' => ['required', 'array', 'min:2', $this->variantNamesRule()],
             'variants.*' => 'required|integer|min:0|max:100',
             'traffic_allocation' => 'required|integer|min:0|max:100',
             'is_active' => 'boolean',
