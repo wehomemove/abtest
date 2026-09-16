@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Experiment extends Model
 {
+    /** Storable lifecycle states. Legacy/unknown values (e.g. 'stopped') read as paused. */
+    public const STATUSES = ['draft', 'running', 'paused', 'completed'];
+
     protected $table = 'ab_experiments';
 
     protected $fillable = [
@@ -87,6 +90,49 @@ class Experiment extends Model
         }
 
         return $rates;
+    }
+
+    /**
+     * Display state derived from status, is_active and the date window:
+     * completed | draft | paused | scheduled | ended | running.
+     * Views render badges from this so the date logic lives in one place.
+     */
+    public function lifecycle(): string
+    {
+        if ($this->status === 'completed') {
+            return 'completed';
+        }
+
+        if ($this->status === 'draft') {
+            return 'draft';
+        }
+
+        if (!$this->is_active || $this->status !== 'running') {
+            return 'paused';
+        }
+
+        $now = now();
+
+        if ($this->start_date && $now->lt($this->start_date)) {
+            return 'scheduled';
+        }
+
+        if ($this->end_date && $now->gt($this->end_date)) {
+            return 'ended';
+        }
+
+        return 'running';
+    }
+
+    /** The status value the edit form should preselect for this experiment. */
+    public function storableStatus(): string
+    {
+        return match ($this->lifecycle()) {
+            'completed' => 'completed',
+            'draft' => 'draft',
+            'paused' => 'paused',
+            default => 'running',
+        };
     }
 
     public function isActive(): bool

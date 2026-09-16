@@ -547,4 +547,125 @@ class DashboardControllerTest extends TestCase
         $this->assertEquals(0, $stats['variants']['control']['conversion_rate']);
     }
 
+    /** @test */
+    public function store_defaults_status_to_running_and_active()
+    {
+        $this->post('/ab-testing/dashboard', [
+            'name' => 'status_default',
+            'variants' => ['control' => 50, 'variant_a' => 50],
+            'traffic_allocation' => 100,
+        ]);
+
+        $this->assertDatabaseHas('ab_experiments', [
+            'name' => 'status_default', 'status' => 'running', 'is_active' => true,
+        ]);
+    }
+
+    /** @test */
+    public function store_accepts_draft_status_as_inactive()
+    {
+        $this->post('/ab-testing/dashboard', [
+            'name' => 'status_draft',
+            'variants' => ['control' => 50, 'variant_a' => 50],
+            'traffic_allocation' => 100,
+            'status' => 'draft',
+        ]);
+
+        $this->assertDatabaseHas('ab_experiments', [
+            'name' => 'status_draft', 'status' => 'draft', 'is_active' => false,
+        ]);
+    }
+
+    /** @test */
+    public function store_accepts_an_end_date_without_a_start_date()
+    {
+        $response = $this->post('/ab-testing/dashboard', [
+            'name' => 'end_only',
+            'variants' => ['control' => 50, 'variant_a' => 50],
+            'traffic_allocation' => 100,
+            'end_date' => now()->addWeek()->format('Y-m-d\TH:i'),
+        ]);
+
+        $response->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('ab_experiments', ['name' => 'end_only']);
+    }
+
+    /** @test */
+    public function update_with_status_derives_is_active()
+    {
+        $id = DB::table('ab_experiments')->insertGetId([
+            'name' => 'status_update', 'variants' => json_encode(['control' => 100]),
+            'is_active' => true, 'status' => 'running', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->put("/ab-testing/dashboard/{$id}", [
+            'name' => 'status_update', 'variants' => ['control' => 50, 'variant_a' => 50],
+            'traffic_allocation' => 100, 'status' => 'paused', 'is_active' => true,
+        ]);
+
+        $this->assertDatabaseHas('ab_experiments', ['id' => $id, 'status' => 'paused', 'is_active' => false]);
+    }
+
+    /** @test */
+    public function update_without_status_keeps_is_active_checkbox_behaviour()
+    {
+        $id = DB::table('ab_experiments')->insertGetId([
+            'name' => 'legacy_update', 'variants' => json_encode(['control' => 100]),
+            'is_active' => false, 'status' => 'stopped', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->put("/ab-testing/dashboard/{$id}", [
+            'name' => 'legacy_update', 'variants' => ['control' => 50, 'variant_a' => 50],
+            'traffic_allocation' => 100, 'is_active' => true,
+        ]);
+
+        $this->assertDatabaseHas('ab_experiments', ['id' => $id, 'status' => 'stopped', 'is_active' => true]);
+    }
+
+    /** @test */
+    public function toggle_sets_status_to_paused_and_back_to_running()
+    {
+        $id = DB::table('ab_experiments')->insertGetId([
+            'name' => 'toggle_status', 'variants' => json_encode(['control' => 100]),
+            'is_active' => true, 'status' => 'running', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->patch("/ab-testing/dashboard/{$id}/toggle");
+        $this->assertDatabaseHas('ab_experiments', ['id' => $id, 'status' => 'paused', 'is_active' => false]);
+
+        $this->patch("/ab-testing/dashboard/{$id}/toggle");
+        $this->assertDatabaseHas('ab_experiments', ['id' => $id, 'status' => 'running', 'is_active' => true]);
+    }
+
+    /** @test */
+    public function complete_marks_completed_inactive_and_stamps_end_date()
+    {
+        $id = DB::table('ab_experiments')->insertGetId([
+            'name' => 'complete_me', 'variants' => json_encode(['control' => 100]),
+            'is_active' => true, 'status' => 'running', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $response = $this->post("/ab-testing/dashboard/{$id}/complete");
+
+        $response->assertRedirect()->assertSessionHas('success', 'Experiment completed.');
+        $row = DB::table('ab_experiments')->find($id);
+        $this->assertSame('completed', $row->status);
+        $this->assertEquals(0, $row->is_active);
+        $this->assertNotNull($row->end_date);
+    }
+
+    /** @test */
+    public function complete_keeps_an_existing_end_date()
+    {
+        $end = now()->subDay()->startOfSecond();
+        $id = DB::table('ab_experiments')->insertGetId([
+            'name' => 'complete_keep_end', 'variants' => json_encode(['control' => 100]),
+            'is_active' => true, 'status' => 'running', 'end_date' => $end,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->post("/ab-testing/dashboard/{$id}/complete");
+
+        $this->assertSame($end->toDateTimeString(), Experiment::find($id)->end_date->toDateTimeString());
+    }
 }

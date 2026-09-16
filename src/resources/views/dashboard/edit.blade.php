@@ -56,7 +56,7 @@
                      funnel_steps key entirely and the old list would survive a
                      "remove all" save. Blanks are filtered server-side. --}}
                 <input type="hidden" name="funnel_steps[]" value="">
-                <div x-data="{ steps: @json(old('funnel_steps', $experiment->custom_events ?? [])) }" class="space-y-2">
+                <div x-data="{ steps: {{ Js::from(old('funnel_steps', $experiment->custom_events ?? [])) }} }" class="space-y-2">
                     <template x-for="(step, index) in steps" :key="index">
                         <div class="flex items-center space-x-2">
                             <span class="text-xs text-gray-400 w-5 text-right" x-text="index + 1 + '.'"></span>
@@ -114,13 +114,18 @@
                 </p>
             </div>
 
-            <div class="flex items-center">
-                <input type="hidden" name="is_active" value="0">
-                <input type="checkbox" name="is_active" value="1" {{ old('is_active', $experiment->is_active) ? 'checked' : '' }}
-                       class="h-4 w-4 text-blue-600 border-gray-300 rounded">
-                <label class="ml-2 text-sm text-gray-700">
-                    Experiment is active
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Status
                 </label>
+                @php $currentStatus = old('status', $experiment->storableStatus()); @endphp
+                <select name="status" class="w-full md:w-64 border border-gray-300 rounded-md px-3 py-2">
+                    <option value="running" {{ $currentStatus === 'running' ? 'selected' : '' }}>Running</option>
+                    <option value="paused" {{ $currentStatus === 'paused' ? 'selected' : '' }}>Paused</option>
+                    <option value="draft" {{ $currentStatus === 'draft' ? 'selected' : '' }}>Draft</option>
+                    <option value="completed" {{ $currentStatus === 'completed' ? 'selected' : '' }}>Completed</option>
+                </select>
+                <p class="text-sm text-gray-500 mt-2">Only running experiments assign new visitors. Existing participants always keep their variant.</p>
             </div>
 
             <!-- Duration Quick Settings -->

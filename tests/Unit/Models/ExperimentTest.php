@@ -402,4 +402,24 @@ class ExperimentTest extends TestCase
         $this->assertEqualsWithDelta(0.9772, \Homemove\AbTesting\Support\Statistics::normalCDF(2.0), 0.001);
         $this->assertEqualsWithDelta(1 - 0.8413, \Homemove\AbTesting\Support\Statistics::normalCDF(-1.0), 0.001);
     }
+
+    /** @test */
+    public function lifecycle_labels_every_state_including_legacy_statuses()
+    {
+        $make = fn (string $name, array $attrs) => Experiment::create(array_merge([
+            'name' => $name, 'variants' => ['control' => 100], 'is_active' => true, 'status' => 'running',
+        ], $attrs));
+
+        $this->assertSame('running', $make('lc_running', [])->lifecycle());
+        $this->assertSame('draft', $make('lc_draft', ['status' => 'draft'])->lifecycle());
+        $this->assertSame('paused', $make('lc_paused', ['status' => 'paused', 'is_active' => false])->lifecycle());
+        $this->assertSame('paused', $make('lc_inactive', ['is_active' => false])->lifecycle());
+        $this->assertSame('paused', $make('lc_stopped', ['status' => 'stopped', 'is_active' => false])->lifecycle());
+        $this->assertSame('completed', $make('lc_completed', ['status' => 'completed', 'is_active' => false])->lifecycle());
+        $this->assertSame('scheduled', $make('lc_scheduled', ['start_date' => now()->addDay()])->lifecycle());
+        $this->assertSame('ended', $make('lc_ended', ['end_date' => now()->subDay()])->lifecycle());
+
+        $this->assertSame('running', $make('lc_store_sched', ['start_date' => now()->addDay()])->storableStatus());
+        $this->assertSame('paused', $make('lc_store_stopped', ['status' => 'stopped', 'is_active' => false])->storableStatus());
+    }
 }

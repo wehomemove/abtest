@@ -77,6 +77,7 @@ class DashboardController extends Controller
             'variants' => 'required|array|min:2',
             'variants.*' => 'required|integer|min:0|max:100',
             'traffic_allocation' => 'required|integer|min:0|max:100',
+            'status' => 'nullable|in:draft,running',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after:start_date',
             'allowed_device_types' => 'nullable|array',
@@ -87,6 +88,12 @@ class DashboardController extends Controller
         if (array_sum($validated['variants']) !== 100) {
             return back()->withErrors(['variants' => 'Variant weights must sum to 100%']);
         }
+
+        // A new experiment is live immediately unless created as a draft. Before
+        // v1.7 the row kept the DB defaults (is_active=1, status='draft'), which
+        // reads as inert once a host enforces the schedule.
+        $validated['status'] = $validated['status'] ?? 'running';
+        $validated['is_active'] = $validated['status'] === 'running';
 
         $validated['allowed_device_types'] = $this->normaliseAllowedDeviceTypes(
             $validated['allowed_device_types'] ?? null
@@ -118,6 +125,7 @@ class DashboardController extends Controller
             'variants.*' => 'required|integer|min:0|max:100',
             'traffic_allocation' => 'required|integer|min:0|max:100',
             'is_active' => 'boolean',
+            'status' => 'nullable|in:draft,running,paused,completed',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after:start_date',
             'allowed_device_types' => 'nullable|array',
@@ -126,6 +134,14 @@ class DashboardController extends Controller
 
         if (array_sum($validated['variants']) !== 100) {
             return back()->withErrors(['variants' => 'Variant weights must sum to 100%']);
+        }
+
+        // A submitted status is the source of truth and derives is_active;
+        // forms that still post the is_active checkbox alone keep working.
+        if (isset($validated['status'])) {
+            $validated['is_active'] = $validated['status'] === 'running';
+        } else {
+            unset($validated['status']);
         }
 
         $validated['allowed_device_types'] = $this->normaliseAllowedDeviceTypes(
@@ -184,12 +200,35 @@ class DashboardController extends Controller
 
     public function toggleStatus(Experiment $experiment)
     {
-        $experiment->update(['is_active' => !$experiment->is_active]);
+        $active = !$experiment->is_active;
+
+        $experiment->update([
+            'is_active' => $active,
+            'status' => $active ? 'running' : 'paused',
+        ]);
 
         // Clear cache
         AbTest::clearCache($experiment->name);
 
         return back()->with('success', 'Experiment status updated!');
+    }
+
+    /**
+     * Close the experiment: no new assignments, existing participants keep
+     * their arm (server-side attribution still resolves). Reversible from the
+     * edit form's status select.
+     */
+    public function complete(Experiment $experiment)
+    {
+        $experiment->update([
+            'status' => 'completed',
+            'is_active' => false,
+            'end_date' => $experiment->end_date ?? now(),
+        ]);
+
+        AbTest::clearCache($experiment->name);
+
+        return back()->with('success', 'Experiment completed.');
     }
 
     protected function getExperimentStats(Experiment $experiment, ?string $deviceType = null, ?string $conversionEvent = null): array

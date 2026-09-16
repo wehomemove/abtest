@@ -11,9 +11,10 @@
             <h1 class="text-3xl font-bold mb-2">{{ $experiment->name }}</h1>
             <p class="text-gray-100 text-lg">{{ $experiment->description }}</p>
             <div class="flex items-center mt-3 space-x-4 flex-wrap">
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ $experiment->is_active ? 'bg-green-600 text-white' : 'bg-gray-500 text-white' }}">
-                    <div class="w-2 h-2 rounded-full mr-2 {{ $experiment->is_active ? 'bg-green-300' : 'bg-red-300' }}"></div>
-                    {{ $experiment->is_active ? 'Active' : 'Paused' }}
+                @php $lifecycle = $experiment->lifecycle(); @endphp
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ $lifecycle === 'running' ? 'bg-green-600 text-white' : 'bg-gray-500 text-white' }}">
+                    <div class="w-2 h-2 rounded-full mr-2 {{ $lifecycle === 'running' ? 'bg-green-300' : 'bg-red-300' }}"></div>
+                    {{ ucfirst($lifecycle) }}
                 </span>
                 <span class="text-gray-100">
                     <i class="fas fa-users mr-1"></i>
@@ -84,6 +85,7 @@
             </select>
             </div>
             <div class="flex items-center gap-3">
+            @if ($lifecycle !== 'completed')
             <form action="{{ route('ab-testing.dashboard.toggle', $experiment) }}" method="POST" class="inline">
                 @csrf
                 @method('PATCH')
@@ -91,6 +93,14 @@
                     {{ $experiment->is_active ? 'Pause' : 'Activate' }}
                 </button>
             </form>
+            <form action="{{ route('ab-testing.dashboard.complete', $experiment) }}" method="POST" class="inline"
+                  onsubmit="return confirm('Complete this experiment? No new visitors will be assigned. Existing participants keep their variant.')">
+                @csrf
+                <button type="submit" class="px-6 py-3 rounded font-medium bg-gray-600 hover:bg-gray-500 text-white transition-all duration-200 transform hover:scale-105">
+                    Complete
+                </button>
+            </form>
+            @endif
             <a href="{{ route('ab-testing.dashboard.edit', $experiment) }}"
                class="px-6 py-3 bg-white text-red-600 rounded hover:bg-red-50 font-medium transition-all duration-200 transform hover:scale-105">
                 Edit
