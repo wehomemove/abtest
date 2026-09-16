@@ -1,5 +1,42 @@
 # Changelog
 
+## v1.7.0 — 2026-09-16
+
+### Assignment policy (opt-in, `config('ab-testing.assignment')`)
+- `enforce_traffic_allocation` — users hashed outside `traffic_allocation`%
+  resolve to `control` with **no assignment row** (not counted as
+  participants). The allocation hash is salted separately from the arm hash,
+  and `bucket < allocation` keeps ramps monotonic. Default `false` (v1.6:
+  the column was displayed but never enforced).
+- `enforce_schedule` — new assignments only while `status = running` and
+  now() is inside `start_date`/`end_date` (the `Experiment::isActive()`
+  rule). Existing assignments always win, so pausing/completing never moves a
+  returning user. Default `false` (v1.6: only `is_active` was checked).
+- `adaptive_allocation` — set `false` for pure deterministic md5 bucketing.
+  Default `true` (v1.6 behaviour: after 20 assignments, steer new users into
+  the most under-represented arm).
+- No behaviour change unless you opt in.
+
+### Lifecycle
+- `store` sets `status` (`running` by default, or `draft` when posted) and
+  derives `is_active` from it. Previously new rows kept the DB defaults
+  (`is_active=1`, `status='draft'`).
+- `update` accepts an optional `status` (`draft|running|paused|completed`)
+  which derives `is_active`; without it the `is_active` checkbox behaves as
+  before.
+- Toggle now sets `status` to `running`/`paused` alongside `is_active`.
+- New `POST /ab-testing/dashboard/{experiment}/complete`
+  (`ab-testing.dashboard.complete`): `status=completed`, `is_active=false`,
+  stamps `end_date` if unset.
+- Fix: the funnel-steps editor on create/edit emitted raw JSON inside a
+  double-quoted `x-data` attribute, which broke the Alpine component as soon
+  as an experiment had steps (uses `Js::from` now).
+- Variant names are validated on store/update: non-empty, `[a-z0-9_]+`. A
+  blank name used to save as arm `0`.
+- `Experiment::lifecycle()` returns `completed|draft|paused|scheduled|ended|running`
+  (legacy/unknown statuses read as paused) and `storableStatus()` maps that
+  back to a value the edit form can post. Package views use both.
+
 ## v1.6.0 — 2026-09-09
 
 ### Portability

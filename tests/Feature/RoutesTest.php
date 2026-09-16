@@ -18,6 +18,7 @@ class RoutesTest extends TestCase
         $this->assertTrue(Route::has('ab-testing.dashboard.update'));
         $this->assertTrue(Route::has('ab-testing.dashboard.destroy'));
         $this->assertTrue(Route::has('ab-testing.dashboard.toggle'));
+        $this->assertTrue(Route::has('ab-testing.dashboard.complete'));
     }
 
     /** @test */

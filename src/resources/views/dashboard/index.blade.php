@@ -24,8 +24,9 @@
                                 <p class="text-gray-600">{{ $experiment->description }}</p>
                             </div>
                             <div class="flex items-center space-x-2">
-                                <span class="px-2 py-1 text-xs font-medium rounded-full {{ $experiment->is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800' }}">
-                                    {{ $experiment->is_active ? 'Active' : 'Inactive' }}
+                                @php $lifecycle = $experiment->lifecycle(); @endphp
+                                <span class="px-2 py-1 text-xs font-medium rounded-full {{ $lifecycle === 'running' ? 'bg-green-100 text-green-800' : ($lifecycle === 'scheduled' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800') }}">
+                                    {{ ucfirst($lifecycle) }}
                                 </span>
                                 <a href="{{ route('ab-testing.dashboard.edit', $experiment) }}" class="text-blue-600 hover:text-blue-900">
                                     Edit

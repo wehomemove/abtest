@@ -61,4 +61,27 @@ return [
         'enabled' => true,
         'queue' => false, // Reserved: not yet implemented
     ],
+
+    /*
+    | Assignment policy (v1.7). Every flag defaults to the v1.6 behaviour so
+    | existing installs change nothing until they opt in.
+    */
+    'assignment' => [
+        // Honour ab_experiments.traffic_allocation: users hashed outside the
+        // allocation resolve to 'control' and are NOT recorded as participants.
+        // false (v1.6): the column is stored and displayed but never enforced.
+        'enforce_traffic_allocation' => false,
+
+        // Only create NEW assignments while status === 'running' and now() is
+        // inside start_date/end_date (the Experiment::isActive() rule). An
+        // existing assignment always wins, so pausing or completing never
+        // moves a returning user. false (v1.6): only is_active is checked.
+        'enforce_schedule' => false,
+
+        // After 20 assignments, steer new users into the most under-represented
+        // arm whenever it sits >= 5pp below target. Balances the split but
+        // makes bucketing depend on global state rather than the user id.
+        // false: pure deterministic md5 bucketing. true (v1.6): adaptive.
+        'adaptive_allocation' => true,
+    ],
 ];

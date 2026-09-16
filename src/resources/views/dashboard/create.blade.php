@@ -67,7 +67,7 @@
                      funnel_steps key entirely and the old list would survive a
                      "remove all" save. Blanks are filtered server-side. --}}
                 <input type="hidden" name="funnel_steps[]" value="">
-                <div x-data="{ steps: @json(old('funnel_steps', [])) }" class="space-y-2">
+                <div x-data="{ steps: {{ Js::from(old('funnel_steps', [])) }} }" class="space-y-2">
                     <template x-for="(step, index) in steps" :key="index">
                         <div class="flex items-center space-x-2">
                             <span class="text-xs text-gray-400 w-5 text-right" x-text="index + 1 + '.'"></span>
@@ -120,6 +120,16 @@
                 <p class="text-sm text-gray-500 mt-2">
                     Leave all checked to include everyone; uncheck to exclude that device class. Excluded users fall through to the control variant and are not recorded as participants.
                 </p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Status
+                </label>
+                <select name="status" class="w-full md:w-64 border border-gray-300 rounded-md px-3 py-2">
+                    <option value="running" {{ old('status', 'running') === 'running' ? 'selected' : '' }}>Running — assign visitors immediately</option>
+                    <option value="draft" {{ old('status') === 'draft' ? 'selected' : '' }}>Draft — save without assigning anyone</option>
+                </select>
             </div>
 
             <!-- Duration Quick Settings -->

@@ -161,6 +161,32 @@ Publish the config (`php artisan vendor:publish --tag=config`). Key options:
 'cookie' => ['secure' => null, 'same_site' => 'Lax'],            // null secure = mirror the request
 ```
 
+### Assignment policy (v1.7)
+
+Three opt-in flags under `assignment`, all defaulting to the pre-1.7 behaviour:
+
+```php
+'assignment' => [
+    'enforce_traffic_allocation' => false, // true: users outside traffic_allocation% get control, no row
+    'enforce_schedule'           => false, // true: new assignments only while status=running and inside start/end
+    'adaptive_allocation'        => true,  // false: deterministic md5 bucketing only
+],
+```
+
+An existing assignment always wins, so pausing or completing an experiment
+never moves a returning user — it only stops new ones. The per-user variant
+cache (`cache.ttl`, 1h) is not evicted by `clearCache($name)`, so a user who
+resolved to control while an experiment was draft/paused/excluded keeps that
+answer for up to the TTL after it starts.
+
+### Lifecycle (v1.7)
+
+`status` is `draft | running | paused | completed`. Create sets `running`
+(or `draft`), the toggle flips `running`/`paused`, and **Complete** on the
+experiment page sets `completed` and stamps `end_date`. The edit form's
+status select can reverse any of these. `Experiment::lifecycle()` adds the
+derived `scheduled` / `ended` states for display.
+
 `cache.*` and `session_key` are honoured since v1.6. `database.*_table` and
 `tracking.queue` are reserved and not yet implemented; `target_applications`
 is host-specific legacy.

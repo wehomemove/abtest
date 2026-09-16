@@ -19,6 +19,7 @@ Route::prefix('ab-testing')
                 Route::put('/{experiment}', [DashboardController::class, 'update'])->name('update');
                 Route::delete('/{experiment}', [DashboardController::class, 'destroy'])->name('destroy');
                 Route::patch('/{experiment}/toggle', [DashboardController::class, 'toggleStatus'])->name('toggle');
+                Route::post('/{experiment}/complete', [DashboardController::class, 'complete'])->name('complete');
                 Route::post('/{experiment}/primary-metric', [DashboardController::class, 'setPrimaryMetric'])->name('primary-metric');
             });
 

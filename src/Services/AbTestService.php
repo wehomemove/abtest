@@ -280,6 +280,18 @@ class AbTestService
             return $existing->variant;
         }
 
+        // Opt-in policy gates (config 'assignment.*', both off by default).
+        // Sit AFTER the existing-assignment check so a returning user always
+        // keeps their arm; only NEW participants are refused. Both outcomes
+        // are cached like any other by variant()'s per-user cache.
+        if (!$this->experimentAcceptsNewAssignments($experiment)) {
+            return 'control';
+        }
+
+        if (!$this->userIsInTrafficAllocation($experiment, $userId)) {
+            return 'control';
+        }
+
         // Assign variant based on traffic allocation
         $variant = $this->calculateVariant($userId, $experiment);
 
@@ -303,24 +315,69 @@ class AbTestService
     {
         $variants = json_decode($experiment->variants, true);
 
-        // Check if we should use adaptive allocation to balance distribution
-        if ($this->shouldUseAdaptiveAllocation($experiment)) {
+        // Adaptive allocation rebalances towards target weights once there is
+        // data, at the cost of deterministic bucketing. Hosts that need a
+        // reproducible user -> arm mapping turn it off in config.
+        if (config('ab-testing.assignment.adaptive_allocation', true)
+            && $this->shouldUseAdaptiveAllocation($experiment)) {
             return $this->calculateAdaptiveVariant($userId, $experiment, $variants);
         }
 
-        // Original hash-based assignment
-        $hash = hexdec(substr(md5($experiment->name . $userId), 0, 8));
-        $percentage = ($hash % 100) + 1;
+        return $this->calculateHashBasedVariant($userId, $experiment->name, $variants);
+    }
 
-        $cumulative = 0;
-        foreach ($variants as $variant => $weight) {
-            $cumulative += (int) $weight; // Cast to integer to handle string values
-            if ($percentage <= $cumulative) {
-                return $variant;
-            }
+    /**
+     * Schedule gate (config assignment.enforce_schedule). Mirrors
+     * Experiment::isActive() on the raw cached row: status must be 'running'
+     * and now() inside the optional start/end window. Dates on the row are
+     * static so the 1h experiment cache does not delay a boundary; status
+     * edits go through the dashboard, which clears the cache.
+     */
+    protected function experimentAcceptsNewAssignments($experiment): bool
+    {
+        if (!config('ab-testing.assignment.enforce_schedule', false)) {
+            return true;
         }
 
-        return 'control';
+        if (($experiment->status ?? null) !== 'running') {
+            return false;
+        }
+
+        $now = now();
+
+        if (!empty($experiment->start_date) && $now->lt(\Illuminate\Support\Carbon::parse($experiment->start_date))) {
+            return false;
+        }
+
+        if (!empty($experiment->end_date) && $now->gt(\Illuminate\Support\Carbon::parse($experiment->end_date))) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Traffic-allocation gate (config assignment.enforce_traffic_allocation).
+     * Buckets the user 0-99 with a salt DISTINCT from the arm hash — reusing
+     * md5(name.user) would make the included users pile into the low
+     * cumulative weights (control). `bucket < allocation` keeps ramps
+     * monotonic: raising 30 -> 60 only adds users, never moves one.
+     */
+    protected function userIsInTrafficAllocation($experiment, $userId): bool
+    {
+        if (!config('ab-testing.assignment.enforce_traffic_allocation', false)) {
+            return true;
+        }
+
+        $allocation = (int) ($experiment->traffic_allocation ?? 100);
+
+        if ($allocation >= 100) {
+            return true;
+        }
+
+        $bucket = hexdec(substr(md5('allocation:' . $experiment->name . ':' . $userId), 0, 8)) % 100;
+
+        return $bucket < $allocation;
     }
 
     /**

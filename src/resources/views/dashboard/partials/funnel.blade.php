@@ -89,7 +89,7 @@
                                          style="width: 45%; min-width: 130px;"
                                          data-funnel-bar="{{ $fv }}:{{ $step['key'] }}">
                                         <span class="truncate">{{ $step['label'] }}</span>
-                                        <span>n/a</span>
+                                        <span class="font-semibold">n/a</span>
                                     </div>
                                 </div>
                             @else
