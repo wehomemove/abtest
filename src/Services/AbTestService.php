@@ -296,7 +296,16 @@ class AbTestService
         $variant = $this->calculateVariant($userId, $experiment);
 
         // Store assignment — device_type captures the first-seen device for this user.
-        DB::table('ab_user_assignments')->insert([
+        //
+        // Two first-visit requests for the same user can both pass the check
+        // above and both reach this insert. The unique index on
+        // (experiment_id, user_id) arbitrates: insertOrIgnore lets the loser's
+        // insert be dropped (Postgres ON CONFLICT DO NOTHING, MySQL/SQLite
+        // ignore) instead of throwing, and the loser then adopts the winning
+        // row. Never recompute on conflict — adaptive allocation can pick a
+        // different arm on the second pass, which would hand one user two
+        // variants without any error to notice.
+        $inserted = DB::table('ab_user_assignments')->insertOrIgnore([
             'experiment_id' => $experiment->id,
             'user_id' => $userId,
             'variant' => $variant,
@@ -304,6 +313,15 @@ class AbTestService
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        if ($inserted === 0) {
+            $winner = DB::table('ab_user_assignments')
+                ->where('experiment_id', $experiment->id)
+                ->where('user_id', $userId)
+                ->value('variant');
+
+            return $winner ?? $variant;
+        }
 
         return $variant;
     }

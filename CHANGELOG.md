@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.7.1 — 2026-09-22
+
+### Fix
+- Concurrent first-visit requests for the same user could both pass the
+  "already assigned?" check and both insert; the unique index on
+  `ab_user_assignments (experiment_id, user_id)` then failed the loser with a
+  `UniqueConstraintViolationException` (a 500 on the page). The insert is now
+  `insertOrIgnore` and the loser adopts the winning row, so one user always
+  has exactly one variant and no request errors. No retry, no recomputation —
+  adaptive allocation could otherwise pick a different arm on the second
+  pass. Present since the first release; affects every version up to 1.7.0.
+
 ## v1.7.0 — 2026-09-16
 
 ### Assignment policy (opt-in, `config('ab-testing.assignment')`)
